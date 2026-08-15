@@ -1,0 +1,72 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Deployment View: Agentic Platform (local) - Laptop"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 20 ["Developer Laptop (macOS, Apple Silicon)"]
+      style 20 fill:#ffffff,stroke:#444444,color:#444444
+
+      subgraph 21 ["Host OS"]
+        style 21 fill:#ffffff,stroke:#444444,color:#444444
+
+        subgraph 22 ["Ollama"]
+          style 22 fill:#ffffff,stroke:#444444,color:#444444
+
+          23["<div style='font-weight: bold'>Local Model Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ollama (workshop: Amazon Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>Serves qwen3:8b and<br />llama3.2:1b over an<br />OpenAI-compatible API. Runs<br />on the HOST, not in the<br />cluster, because that is<br />where the GPU is.</div>"]
+          style 23 fill:#6b4fa0,stroke:#4a3770,color:#ffffff
+        end
+
+      end
+
+      subgraph 24 ["Docker Desktop VM"]
+        style 24 fill:#ffffff,stroke:#444444,color:#444444
+
+        subgraph 25 ["k3d cluster 'agentic'"]
+          style 25 fill:#ffffff,stroke:#444444,color:#444444
+
+          subgraph 26 ["namespace: envoy-gateway-system"]
+            style 26 fill:#ffffff,stroke:#444444,color:#444444
+
+            subgraph 27 ["Envoy data plane"]
+              style 27 fill:#ffffff,stroke:#444444,color:#444444
+
+              28["<div style='font-weight: bold'>AI Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>LAB 0 control point. Owns<br />WHICH model answers: agents<br />ask for an alias, the gateway<br />rewrites it to a real model.<br />Also the only thing that<br />would hold a model<br />credential.</div>"]
+              style 28 fill:#b8860b,stroke:#805d07,color:#ffffff
+            end
+
+          end
+
+          subgraph 30 ["namespace: default"]
+            style 30 fill:#ffffff,stroke:#444444,color:#444444
+
+            subgraph 31 ["Deployment: customer-agent"]
+              style 31 fill:#ffffff,stroke:#444444,color:#444444
+
+              32["<div style='font-weight: bold'>Customer Agent</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, Strands Agents SDK, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>Agent loop: picks tools,<br />calls the model, streams SSE.<br />agent.py/server.py run<br />VERBATIM from the workshop.</div>"]
+              style 32 fill:#c0392b,stroke:#86271e,color:#ffffff
+              34[("<div style='font-weight: bold'>Orders Store</div><div style='font-size: 70%; margin-top: 0px'>[Container: SQLite (workshop: Amazon DynamoDB)]</div><div style='font-size: 80%; margin-top:10px'>500 seeded orders. Read via a<br />scoped, parameterized query —<br />the agent never writes SQL.</div>")]
+              style 34 fill:#2e7d32,stroke:#205723,color:#ffffff
+            end
+
+            subgraph 36 ["Deployment: chat-ui"]
+              style 36 fill:#ffffff,stroke:#444444,color:#444444
+
+              37["<div style='font-weight: bold'>Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: Chainlit (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>Streams the agent's answer<br />and renders tool calls as<br />steps.</div>"]
+              style 37 fill:#438dd5,stroke:#2e6295,color:#ffffff
+            end
+
+          end
+
+        end
+
+      end
+
+    end
+
+    28-. "<div>Rewrites alias -> qwen3:8b,<br />forwards</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->23
+    32-. "<div>Chat completions, asking for<br />the ALIAS 'local-smart'</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->28
+    32-. "<div>lookup_order(order_id)</div><div style='font-size: 70%'>[SQLite read]</div>" .->34
+    37-. "<div>POST /chat, consumes SSE</div><div style='font-size: 70%'>[HTTP/SSE]</div>" .->32
+
+  end

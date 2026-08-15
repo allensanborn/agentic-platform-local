@@ -1,0 +1,137 @@
+@startuml
+title <size:24>Deployment View: Agentic Platform (local) - Laptop</size>\n<size:24>Where each container actually runs — and the two host-boundary gotchas that cost real debugging time.</size>
+
+set separator none
+left to right direction
+skinparam ranksep 20
+skinparam nodesep 5
+hide stereotype
+
+<style>
+  root {
+    BackgroundColor: #ffffff;
+    FontColor: #444444;
+  }
+  // Element,Container,Agent
+  .Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ= {
+    BackgroundColor: #c0392b;
+    LineColor: #86271e;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Container,ControlPoint
+  .Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50 {
+    BackgroundColor: #b8860b;
+    LineColor: #805d07;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Container,Data
+  .Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ== {
+    BackgroundColor: #2e7d32;
+    LineColor: #205723;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Container,Model
+  .Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw= {
+    BackgroundColor: #6b4fa0;
+    LineColor: #4a3770;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Container,UI
+  .Element-RWxlbWVudCxDb250YWluZXIsVUk= {
+    BackgroundColor: #438dd5;
+    LineColor: #2e6295;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Relationship
+  .Relationship-UmVsYXRpb25zaGlw {
+    LineThickness: 2;
+    LineStyle: 10-10;
+    LineColor: #444444;
+    FontColor: #444444;
+    FontSize: 24;
+    MaximumWidth: 200;
+  }
+  // Element
+  .DeploymentNode-RWxlbWVudA== {
+    BackgroundColor: #ffffff;
+    LineColor: #444444;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #444444;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+  }
+</style>
+
+rectangle "Developer Laptop (macOS, Apple Silicon)\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon {
+  rectangle "Host OS\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS {
+    rectangle "Ollama\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS.Ollama {
+      rectangle "==Local Model Runtime\n<size:16>[Container: Ollama (workshop: Amazon Bedrock)]</size>\n\nServes qwen3:8b and llama3.2:1b over an OpenAI-compatible API. Runs on the HOST, not in the cluster, because that is where the GPU is." <<Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS.Ollama.LocalModelRuntime_1
+    }
+
+  }
+
+  rectangle "Docker Desktop VM\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM {
+    rectangle "k3d cluster 'agentic'\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic {
+      rectangle "namespace: envoy-gateway-system\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem {
+        rectangle "Envoy data plane\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane {
+          hexagon "==AI Gateway\n<size:16>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</size>\n\nLAB 0 control point. Owns WHICH model answers: agents ask for an alias, the gateway rewrites it to a real model. Also the only thing that would hold a model credential." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1
+        }
+
+      }
+
+      rectangle "namespace: default\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault {
+        rectangle "Deployment: customer-agent\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent {
+          rectangle "==Customer Agent\n<size:16>[Container: Python, Strands Agents SDK, FastAPI]</size>\n\nAgent loop: picks tools, calls the model, streams SSE. agent.py/server.py run VERBATIM from the workshop." <<Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1
+          database "==Orders Store\n<size:16>[Container: SQLite (workshop: Amazon DynamoDB)]</size>\n\n500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.OrdersStore_1
+        }
+
+        rectangle "Deployment: chat-ui\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentchatui {
+          rectangle "==Chat UI\n<size:16>[Container: Chainlit (workshop: same)]</size>\n\nStreams the agent's answer and renders tool calls as steps." <<Element-RWxlbWVudCxDb250YWluZXIsVUk=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentchatui.ChatUI_1
+        }
+
+      }
+
+    }
+
+  }
+
+}
+
+Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS.Ollama.LocalModelRuntime_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Rewrites alias -> qwen3:8b, forwards\n<size:16>[HTTP, OpenAI wire format]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Chat completions, asking for the ALIAS 'local-smart'\n<size:16>[HTTP, OpenAI wire format]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.OrdersStore_1 <<Relationship-UmVsYXRpb25zaGlw>> : "lookup_order(order_id)\n<size:16>[SQLite read]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentchatui.ChatUI_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 <<Relationship-UmVsYXRpb25zaGlw>> : "POST /chat, consumes SSE\n<size:16>[HTTP/SSE]</size>"
+
+@enduml

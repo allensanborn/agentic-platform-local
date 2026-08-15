@@ -56,3 +56,18 @@ gateway:         ## apply the lab-0 gateway manifests (see ADR 0002 — not yet 
 
 clean:
 	k3d cluster delete agentic || true
+
+# --- architecture diagrams (C4 via Structurizr, Tier 1 headless Docker) -------------
+DIAG := docs/architecture
+
+diagrams:        ## validate workspace.dsl and render PNG/SVG + Mermaid into docs/architecture/exports
+	docker run --rm -v "$(CURDIR)/$(DIAG):/work" -w /work structurizr/structurizr \
+	  export -workspace workspace.dsl -format mermaid -output exports
+	docker run --rm -v "$(CURDIR)/$(DIAG):/work" -w /work structurizr/structurizr \
+	  export -workspace workspace.dsl -format plantuml -output exports
+	cd $(DIAG)/exports && docker run --rm -v "$$PWD:/data" -w /data plantuml/plantuml -tpng "structurizr-*.puml"
+	@echo "rendered:"; for f in $(DIAG)/exports/*.png; do printf "  %8s  %s\n" "$$(wc -c < $$f)" "$$f"; done
+
+diagrams-lint:   ## structurizr model lint
+	docker run --rm -v "$(CURDIR)/$(DIAG):/work" -w /work structurizr/structurizr \
+	  inspect -workspace workspace.dsl

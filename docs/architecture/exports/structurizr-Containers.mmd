@@ -1,0 +1,37 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: Agentic Platform (local)"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>Shopper</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Asks about their order in<br />natural language.</div>"]
+    style 1 fill:#08427b,stroke:#052e56,color:#ffffff
+    2["<div style='font-weight: bold'>Platform Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Runs the cluster and owns the<br />control points.</div>"]
+    style 2 fill:#08427b,stroke:#052e56,color:#ffffff
+    3["<div style='font-weight: bold'>Anthropic API</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Frontier model, used only<br />where a local model is not<br />good enough (labs 6-7).</div>"]
+    style 3 fill:#999999,stroke:#6b6b6b,color:#ffffff
+
+    subgraph 4 ["Agentic Platform (local)"]
+      style 4 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      5["<div style='font-weight: bold'>Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: Chainlit (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>Streams the agent's answer<br />and renders tool calls as<br />steps.</div>"]
+      style 5 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      6["<div style='font-weight: bold'>Customer Agent</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, Strands Agents SDK, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>Agent loop: picks tools,<br />calls the model, streams SSE.<br />agent.py/server.py run<br />VERBATIM from the workshop.</div>"]
+      style 6 fill:#c0392b,stroke:#86271e,color:#ffffff
+      7["<div style='font-weight: bold'>AI Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>LAB 0 control point. Owns<br />WHICH model answers: agents<br />ask for an alias, the gateway<br />rewrites it to a real model.<br />Also the only thing that<br />would hold a model<br />credential.</div>"]
+      style 7 fill:#b8860b,stroke:#805d07,color:#ffffff
+      8["<div style='font-weight: bold'>Local Model Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ollama (workshop: Amazon Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>Serves qwen3:8b and<br />llama3.2:1b over an<br />OpenAI-compatible API. Runs<br />on the HOST, not in the<br />cluster, because that is<br />where the GPU is.</div>"]
+      style 8 fill:#6b4fa0,stroke:#4a3770,color:#ffffff
+      9[("<div style='font-weight: bold'>Orders Store</div><div style='font-size: 70%; margin-top: 0px'>[Container: SQLite (workshop: Amazon DynamoDB)]</div><div style='font-size: 80%; margin-top:10px'>500 seeded orders. Read via a<br />scoped, parameterized query —<br />the agent never writes SQL.</div>")]
+      style 9 fill:#2e7d32,stroke:#205723,color:#ffffff
+    end
+
+    1-. "<div>Asks about an order</div><div style='font-size: 70%'></div>" .->5
+    2-. "<div>Changes the model alias table<br />(no agent redeploy)</div><div style='font-size: 70%'></div>" .->7
+    5-. "<div>POST /chat, consumes SSE</div><div style='font-size: 70%'>[HTTP/SSE]</div>" .->6
+    6-. "<div>Chat completions, asking for<br />the ALIAS 'local-smart'</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->7
+    6-. "<div>lookup_order(order_id)</div><div style='font-size: 70%'>[SQLite read]</div>" .->9
+    7-. "<div>Rewrites alias -> qwen3:8b,<br />forwards</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->8
+    7-. "<div>Same hop, different backend —<br />a config change, not a code<br />change</div><div style='font-size: 70%'>[HTTPS, Anthropic wire format]</div>" .->3
+
+  end

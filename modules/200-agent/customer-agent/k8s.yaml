@@ -1,0 +1,101 @@
+# Lab 1 — the customer agent, running IN the cluster.
+#
+# Workshop original: modules/200-strands-agents/customer-agent/k8s.yaml, a Deployment +
+# ClusterIP Service pulling from ECR, with `envFrom: configMapRef: agent-config` and a
+# serviceAccountName bound to a DynamoDB IAM role via EKS Pod Identity.
+#
+# Local differences, and why:
+#   - image is built locally and side-loaded with `k3d image import` — no registry needed
+#   - no serviceAccountName: there is no cloud IAM to bind, which is the point. The workshop
+#     works hard so the agent holds no model credential; here it holds none because none
+#     exists. (Lab 3 is where identity starts to matter again, via a JWT.)
+#   - MODEL_BASE_URL points at the gateway's in-cluster Service, not localhost. This is the
+#     hop the workshop actually demonstrates: the agent talks to a ClusterIP, and the gateway
+#     owns which model that becomes.
+#   - an initContainer seeds SQLite into a shared emptyDir, standing in for DynamoDB being an
+#     external store the agent does not own.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-config
+  namespace: default
+data:
+  # The workshop's agent-config carries every backing service URL. Ours starts with the
+  # model hop and grows a lab at a time (Langfuse in lab 2, MCP in lab 3, ...).
+  MODEL_BASE_URL: "http://ai-gateway.envoy-gateway-system.svc.cluster.local/v1"
+  MODEL_ID: "local-smart"
+  MODEL_API_KEY: "not-needed"
+  ORDERS_DB: "/data/orders.db"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-agent
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customer-agent
+  template:
+    metadata:
+      labels:
+        app: customer-agent
+    spec:
+      initContainers:
+        # Builds /data/orders.db from the dataset baked into the image. Keeps the agent
+        # container's filesystem read-only of the data it queries, and makes the "the store
+        # is not the agent" boundary visible in the manifest.
+        - name: seed-orders
+          image: customer-agent:local
+          imagePullPolicy: Never
+          command: ["python", "/seed/seed-orders.py"]
+          env:
+            - name: ORDERS_JSON
+              value: /seed/orders.json
+            - name: ORDERS_DB
+              value: /data/orders.db
+          volumeMounts:
+            - name: orders
+              mountPath: /data
+      containers:
+        - name: customer-agent
+          image: customer-agent:local
+          # Never: the image is side-loaded into k3d, there is no registry to pull from.
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: agent-config
+          volumeMounts:
+            - name: orders
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+          resources:
+            requests:
+              cpu: "256m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+      volumes:
+        - name: orders
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-agent
+  namespace: default
+spec:
+  selector:
+    app: customer-agent
+  ports:
+    - port: 8080
+      targetPort: 8080

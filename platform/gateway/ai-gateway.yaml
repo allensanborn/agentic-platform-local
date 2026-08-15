@@ -21,6 +21,29 @@ metadata:
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
 ---
+# Pins the generated data-plane Service name. Without this Envoy Gateway appends a hash
+# (envoy-<ns>-<gw>-<hash>), which an agent's MODEL_BASE_URL cannot depend on. Same trick the
+# workshop uses, and it yields the workshop's exact in-cluster URL:
+#     http://ai-gateway.envoy-gateway-system.svc.cluster.local/v1
+# Note the Service is created in the Envoy Gateway CONTROLLER namespace
+# (envoy-gateway-system), not in this manifest's namespace.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: ai-gateway-proxy
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: ClusterIP
+        name: ai-gateway
+      envoyDeployment:
+        container:
+          # Clear the large default requests so this fits comfortably on a laptop.
+          resources: {}
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -32,6 +55,11 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: ai-gateway-proxy
 ---
 # Ollama runs on the host, outside the k3d cluster, because that is where the GPU is.
 #

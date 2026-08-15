@@ -1,0 +1,8 @@
+{
+  "tier": 1,
+  "diagramDir": "docs/architecture",
+  "mcp": { "mode": "none" },
+  "lite": { "port": 8080 },
+  "reviewGrill": true,
+  "note": "Tier 1 (headless Docker structurizr). Port 8080 is already used by the AI gateway port-forward in this repo, so if Lite is ever started, move it."
+}

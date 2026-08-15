@@ -1,0 +1,150 @@
+@startuml
+title <size:24>Container View: Agentic Platform (local)</size>\n<size:24>The hops. Lab 0 puts a control point between the agent and the model; later labs add one per hop.</size>
+
+set separator none
+left to right direction
+skinparam ranksep 20
+skinparam nodesep 5
+hide stereotype
+
+<style>
+  root {
+    BackgroundColor: #ffffff;
+    FontColor: #444444;
+  }
+  // Element,Container,Agent
+  .Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ= {
+    BackgroundColor: #c0392b;
+    LineColor: #86271e;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Container,ControlPoint
+  .Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50 {
+    BackgroundColor: #b8860b;
+    LineColor: #805d07;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Container,Data
+  .Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ== {
+    BackgroundColor: #2e7d32;
+    LineColor: #205723;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Container,Model
+  .Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw= {
+    BackgroundColor: #6b4fa0;
+    LineColor: #4a3770;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Container,UI
+  .Element-RWxlbWVudCxDb250YWluZXIsVUk= {
+    BackgroundColor: #438dd5;
+    LineColor: #2e6295;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Person
+  .Element-RWxlbWVudCxQZXJzb24= {
+    BackgroundColor: #08427b;
+    LineColor: #052e56;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Software System,External,Optional
+  .Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWwsT3B0aW9uYWw= {
+    BackgroundColor: #999999;
+    LineColor: #6b6b6b;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Relationship
+  .Relationship-UmVsYXRpb25zaGlw {
+    LineThickness: 2;
+    LineStyle: 10-10;
+    LineColor: #444444;
+    FontColor: #444444;
+    FontSize: 24;
+    MaximumWidth: 200;
+  }
+  // Relationship,Optional
+  .Relationship-UmVsYXRpb25zaGlwLE9wdGlvbmFs {
+    LineThickness: 2;
+    LineStyle: 10-10;
+    LineColor: #444444;
+    FontColor: #444444;
+    FontSize: 24;
+    MaximumWidth: 200;
+  }
+  // Agentic Platform (local)
+  .Boundary-QWdlbnRpYyBQbGF0Zm9ybSAobG9jYWwp {
+    BackgroundColor: #ffffff;
+    LineColor: #0b4884;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+  }
+</style>
+
+person "==Shopper\n<size:16>[Person]</size>\n\nAsks about their order in natural language." <<Element-RWxlbWVudCxQZXJzb24=>> as Shopper
+person "==Platform Operator\n<size:16>[Person]</size>\n\nRuns the cluster and owns the control points." <<Element-RWxlbWVudCxQZXJzb24=>> as PlatformOperator
+rectangle "==Anthropic API\n<size:16>[Software System]</size>\n\nFrontier model, used only where a local model is not good enough (labs 6-7)." <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWwsT3B0aW9uYWw=>> as AnthropicAPI
+
+rectangle "Agentic Platform (local)\n<size:16>[Software System]</size>" <<Boundary-QWdlbnRpYyBQbGF0Zm9ybSAobG9jYWwp>> {
+  rectangle "==Chat UI\n<size:16>[Container: Chainlit (workshop: same)]</size>\n\nStreams the agent's answer and renders tool calls as steps." <<Element-RWxlbWVudCxDb250YWluZXIsVUk=>> as AgenticPlatformlocal.ChatUI
+  rectangle "==Customer Agent\n<size:16>[Container: Python, Strands Agents SDK, FastAPI]</size>\n\nAgent loop: picks tools, calls the model, streams SSE. agent.py/server.py run VERBATIM from the workshop." <<Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ=>> as AgenticPlatformlocal.CustomerAgent
+  hexagon "==AI Gateway\n<size:16>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</size>\n\nLAB 0 control point. Owns WHICH model answers: agents ask for an alias, the gateway rewrites it to a real model. Also the only thing that would hold a model credential." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.AIGateway
+  rectangle "==Local Model Runtime\n<size:16>[Container: Ollama (workshop: Amazon Bedrock)]</size>\n\nServes qwen3:8b and llama3.2:1b over an OpenAI-compatible API. Runs on the HOST, not in the cluster, because that is where the GPU is." <<Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw=>> as AgenticPlatformlocal.LocalModelRuntime
+  database "==Orders Store\n<size:16>[Container: SQLite (workshop: Amazon DynamoDB)]</size>\n\n500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>> as AgenticPlatformlocal.OrdersStore
+}
+
+Shopper --> AgenticPlatformlocal.ChatUI <<Relationship-UmVsYXRpb25zaGlw>> : "Asks about an order"
+PlatformOperator --> AgenticPlatformlocal.AIGateway <<Relationship-UmVsYXRpb25zaGlw>> : "Changes the model alias table (no agent redeploy)"
+AgenticPlatformlocal.ChatUI --> AgenticPlatformlocal.CustomerAgent <<Relationship-UmVsYXRpb25zaGlw>> : "POST /chat, consumes SSE\n<size:16>[HTTP/SSE]</size>"
+AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.AIGateway <<Relationship-UmVsYXRpb25zaGlw>> : "Chat completions, asking for the ALIAS 'local-smart'\n<size:16>[HTTP, OpenAI wire format]</size>"
+AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.OrdersStore <<Relationship-UmVsYXRpb25zaGlw>> : "lookup_order(order_id)\n<size:16>[SQLite read]</size>"
+AgenticPlatformlocal.AIGateway --> AgenticPlatformlocal.LocalModelRuntime <<Relationship-UmVsYXRpb25zaGlw>> : "Rewrites alias -> qwen3:8b, forwards\n<size:16>[HTTP, OpenAI wire format]</size>"
+AgenticPlatformlocal.AIGateway --> AnthropicAPI <<Relationship-UmVsYXRpb25zaGlwLE9wdGlvbmFs>> : "Same hop, different backend — a config change, not a code change\n<size:16>[HTTPS, Anthropic wire format]</size>"
+
+@enduml
