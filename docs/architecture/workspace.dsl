@@ -51,6 +51,14 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                 tags "Observability"
             }
 
+            mcpgw = container "Agent Gateway" "LAB 3/4 control point. Owns WHICH TOOLS an agent can see and call. Because tool calls now cross a network they are interceptable — lab 4 spends that." "agentgateway (workshop: same)" {
+                tags "ControlPoint"
+            }
+
+            mcp = container "MCP Tool Server" "lookup_order, check_inventory, initiate_return. Ships and scales independently of the agent; discovered at runtime via list_tools." "Python, FastMCP (workshop: same)" {
+                tags "Tools"
+            }
+
             orders = container "Orders Store" "500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." "SQLite (workshop: Amazon DynamoDB)" {
                 tags "Data"
             }
@@ -62,7 +70,9 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
 
         ui    -> agent    "POST /chat, consumes SSE" "HTTP/SSE"
         agent -> gateway  "Chat completions, asking for the ALIAS 'local-smart'" "HTTP, OpenAI wire format"
-        agent -> orders   "lookup_order(order_id)" "SQLite read"
+        agent -> mcpgw    "list_tools at session start, then tool calls" "MCP / StreamableHTTP"
+        mcpgw -> mcp      "Proxies MCP; enforces policy in lab 4" "MCP / StreamableHTTP"
+        mcp   -> orders   "Scoped, parameterized read" "SQLite"
 
         gateway -> ollama    "Rewrites alias -> qwen3:8b, forwards" "HTTP, OpenAI wire format"
 
@@ -90,13 +100,19 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                                 containerInstance gateway
                             }
                         }
+                        deploymentNode "namespace: agentgateway-system" "Gateway named mcp-gateway, NOT agentgateway — the Helm chart owns a Deployment of that name and the collision is an immutable-selector error that retries forever behind a green status" {
+                            containerInstance mcpgw
+                        }
                         deploymentNode "namespace: telemetry" {
                             containerInstance collector
                             containerInstance tracing
                         }
                         deploymentNode "namespace: default" {
-                            deploymentNode "Deployment: customer-agent" "initContainer seeds the orders DB into an emptyDir the agent mounts" {
+                            deploymentNode "Deployment: customer-agent" "LAB 3: no orders volume any more — the agent has no path to the store" {
                                 containerInstance agent
+                            }
+                            deploymentNode "Deployment: mcp-server" "initContainer seeds the orders DB here; the data moved to the TOOLS" {
+                                containerInstance mcp
                                 containerInstance orders
                             }
                             deploymentNode "Deployment: chat-ui" {
@@ -160,6 +176,10 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
             }
             element "Agent" {
                 background #c0392b
+                color #ffffff
+            }
+            element "Tools" {
+                background #1565c0
                 color #ffffff
             }
             element "Observability" {

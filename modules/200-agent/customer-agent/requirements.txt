@@ -1,4 +1,6 @@
 strands-agents[openai,otel]
+# Same pin as the MCP server: 2.0 dropped mcp.server.fastmcp / renamed FastMCP.
+mcp[cli]>=1.10,<2
 fastapi
 uvicorn
 # OpenTelemetry zero-code instrumentation. The `opentelemetry-instrument` launcher (see the

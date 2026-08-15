@@ -13,7 +13,7 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 | 0 | Model gateway (Envoy AI Gateway → Ollama), alias table | ✅ **working** |
 | 1 | Strands agent + `lookup_order` tool + SSE + Chainlit UI, all in-cluster | ✅ **working** |
 | 2 | Observability: OTel auto-instrumentation + collector | ✅ **working** (Jaeger not Langfuse; gateway span is a known gap — [ADR 0004](docs/adr/0004-observability-backend-and-gateway-spans.md)) |
-| 3 | MCP tool serving | not started |
+| 3 | MCP tool serving via agentgateway + least privilege | ✅ **working** |
 | 4 | Authorization (Keycloak + AgentgatewayPolicy) | not started |
 | 5 | Sandboxed code execution | not started |
 | 6-7 | Autonomous coding agent | not started |

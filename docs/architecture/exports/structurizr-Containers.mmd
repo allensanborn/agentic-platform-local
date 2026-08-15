@@ -16,8 +16,12 @@ graph LR
 
       10["<div style='font-weight: bold'>Trace Backend</div><div style='font-size: 70%; margin-top: 0px'>[Container: Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)]</div><div style='font-size: 80%; margin-top:10px'>Renders the agent trace tree:<br />invoke_agent -> event loop -><br />chat -> tool, with GenAI<br />semantic-convention<br />attributes.</div>"]
       style 10 fill:#00695c,stroke:#004940,color:#ffffff
-      11[("<div style='font-weight: bold'>Orders Store</div><div style='font-size: 70%; margin-top: 0px'>[Container: SQLite (workshop: Amazon DynamoDB)]</div><div style='font-size: 80%; margin-top:10px'>500 seeded orders. Read via a<br />scoped, parameterized query —<br />the agent never writes SQL.</div>")]
-      style 11 fill:#2e7d32,stroke:#205723,color:#ffffff
+      11["<div style='font-weight: bold'>Agent Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: agentgateway (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>LAB 3/4 control point. Owns<br />WHICH TOOLS an agent can see<br />and call. Because tool calls<br />now cross a network they are<br />interceptable — lab 4 spends<br />that.</div>"]
+      style 11 fill:#b8860b,stroke:#805d07,color:#ffffff
+      12["<div style='font-weight: bold'>MCP Tool Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastMCP (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>lookup_order,<br />check_inventory,<br />initiate_return. Ships and<br />scales independently of the<br />agent; discovered at runtime<br />via list_tools.</div>"]
+      style 12 fill:#1565c0,stroke:#0e4686,color:#ffffff
+      13[("<div style='font-weight: bold'>Orders Store</div><div style='font-size: 70%; margin-top: 0px'>[Container: SQLite (workshop: Amazon DynamoDB)]</div><div style='font-size: 80%; margin-top:10px'>500 seeded orders. Read via a<br />scoped, parameterized query —<br />the agent never writes SQL.</div>")]
+      style 13 fill:#2e7d32,stroke:#205723,color:#ffffff
       5["<div style='font-weight: bold'>Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: Chainlit (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>Streams the agent's answer<br />and renders tool calls as<br />steps.</div>"]
       style 5 fill:#438dd5,stroke:#2e6295,color:#ffffff
       6["<div style='font-weight: bold'>Customer Agent</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, Strands Agents SDK, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>Agent loop: picks tools,<br />calls the model, streams SSE.<br />agent.py/server.py run<br />VERBATIM from the workshop.</div>"]
@@ -34,7 +38,9 @@ graph LR
     2-. "<div>Changes the model alias table<br />(no agent redeploy)</div><div style='font-size: 70%'></div>" .->7
     5-. "<div>POST /chat, consumes SSE</div><div style='font-size: 70%'>[HTTP/SSE]</div>" .->6
     6-. "<div>Chat completions, asking for<br />the ALIAS 'local-smart'</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->7
-    6-. "<div>lookup_order(order_id)</div><div style='font-size: 70%'>[SQLite read]</div>" .->11
+    6-. "<div>list_tools at session start,<br />then tool calls</div><div style='font-size: 70%'>[MCP / StreamableHTTP]</div>" .->11
+    11-. "<div>Proxies MCP; enforces policy<br />in lab 4</div><div style='font-size: 70%'>[MCP / StreamableHTTP]</div>" .->12
+    12-. "<div>Scoped, parameterized read</div><div style='font-size: 70%'>[SQLite]</div>" .->13
     7-. "<div>Rewrites alias -> qwen3:8b,<br />forwards</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->8
     6-. "<div>Spans, zero tracing code —<br />opentelemetry-instrument<br />patches httpx + FastAPI</div><div style='font-size: 70%'>[OTLP/HTTP]</div>" .->9
     7-. "<div>Spans (configured; not yet<br />landing — see ADR 0004)</div><div style='font-size: 70%'>[OTLP/gRPC]</div>" .->9

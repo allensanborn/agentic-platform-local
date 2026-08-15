@@ -11,7 +11,29 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 
-from agent import agent
+from agent import build_session_agent
+
+# Per-session agent cache. Tools are discovered when the MCP transport connects, and the
+# connection carries the caller's identity, so one shared agent cannot serve multiple users
+# correctly (lab 4). Cache by session and rebuild if the token changes.
+_SESSIONS: dict[str, tuple] = {}
+
+
+def _get_session_agent(session_id: str | None, access_token: str | None):
+    key = session_id or "default"
+    cached = _SESSIONS.get(key)
+    if cached and cached[0] == access_token:
+        return cached[1]
+    if cached:
+        # Token changed: tear the old client down rather than leaking the connection.
+        for c in cached[2]:
+            try:
+                c.__exit__(None, None, None)
+            except Exception:
+                pass
+    agent, clients = build_session_agent(access_token=access_token, session_id=session_id)
+    _SESSIONS[key] = (access_token, agent, clients)
+    return agent
 
 
 def sse_events_for(event: dict) -> list[str]:
@@ -67,6 +89,7 @@ class ChatRequest(BaseModel):
     query: str
     session_id: str | None = None
     actor_id: str | None = None
+    access_token: str | None = None
 
 
 app = FastAPI()
@@ -80,6 +103,8 @@ def healthz():
 @app.post("/chat")
 async def chat(req: ChatRequest):
     print(f"[chat] actor={req.actor_id} session={req.session_id} query={req.query!r}", flush=True)
+
+    agent = _get_session_agent(req.session_id, req.access_token)
 
     async def generate():
         async for event in agent.stream_async(req.query):

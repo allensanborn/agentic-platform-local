@@ -26,7 +26,8 @@ data:
   MODEL_BASE_URL: "http://ai-gateway.envoy-gateway-system.svc.cluster.local/v1"
   MODEL_ID: "local-smart"
   MODEL_API_KEY: "not-needed"
-  ORDERS_DB: "/data/orders.db"
+  # Tools are discovered from here at runtime; the agent no longer imports them.
+  MCP_SERVER_URL: "http://mcp-gateway.agentgateway-system.svc.cluster.local/mcp"
   # Lab 2. The agent speaks plain OTLP to the shared collector and holds no
   # credential for the tracing backend — the collector is the only egress.
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.telemetry.svc.cluster.local:4318"
@@ -49,22 +50,10 @@ spec:
       labels:
         app: customer-agent
     spec:
-      initContainers:
-        # Builds /data/orders.db from the dataset baked into the image. Keeps the agent
-        # container's filesystem read-only of the data it queries, and makes the "the store
-        # is not the agent" boundary visible in the manifest.
-        - name: seed-orders
-          image: customer-agent:local
-          imagePullPolicy: Never
-          command: ["python", "/seed/seed-orders.py"]
-          env:
-            - name: ORDERS_JSON
-              value: /seed/orders.json
-            - name: ORDERS_DB
-              value: /data/orders.db
-          volumeMounts:
-            - name: orders
-              mountPath: /data
+      # LAB 3 least-privilege: the orders initContainer and volume are GONE. The data moved
+      # to the MCP server, so the agent now has no path to the store at all — verify with
+      #   kubectl exec deploy/customer-agent -- ls /data   # No such file (correct)
+      # In the workshop this is where the agent's ServiceAccount loses its DynamoDB IAM role.
       containers:
         - name: customer-agent
           image: customer-agent:local
@@ -75,9 +64,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: agent-config
-          volumeMounts:
-            - name: orders
-              mountPath: /data
           readinessProbe:
             httpGet:
               path: /healthz
@@ -90,9 +76,6 @@ spec:
             limits:
               cpu: "1"
               memory: "1Gi"
-      volumes:
-        - name: orders
-          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

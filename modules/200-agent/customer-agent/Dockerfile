@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY agent.py tools.py server.py ./
+COPY agent.py server.py ./
 COPY seed-orders.py orders.json /seed/
 
 # Unbuffered stdout so startup prints reach `kubectl logs` immediately. Without this Python

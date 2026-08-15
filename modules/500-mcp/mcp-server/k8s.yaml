@@ -1,0 +1,128 @@
+# Lab 3 — tools behind agentgateway.
+#
+# The workshop's object graph, essentially unmodified. Three pieces put an MCP server behind
+# a gateway, and none of them are AWS-specific:
+#
+#   1. a Service marked `appProtocol: agentgateway.dev/mcp` so the gateway knows this
+#      backend speaks MCP rather than plain HTTP
+#   2. an AgentgatewayBackend naming it as an MCP target over StreamableHTTP
+#   3. a vanilla Gateway-API HTTPRoute pointing at that backend
+#
+# Note what is NOT here: any authorization. Lab 4 adds it as two more objects, without
+# touching the agent or the tools — which is the argument for routing tool calls through a
+# gateway in the first place.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mcp-server}
+  template:
+    metadata:
+      labels: {app: mcp-server}
+    spec:
+      initContainers:
+        # The data now lives with the TOOLS, not the agent. That is the least-privilege half
+        # of this lab: after this, the agent has no path to the orders store at all.
+        - name: seed-orders
+          image: mcp-server:local
+          imagePullPolicy: Never
+          command: ["python", "/seed/seed-orders.py"]
+          env:
+            - {name: ORDERS_JSON, value: /seed/orders.json}
+            - {name: ORDERS_DB, value: /data/orders.db}
+          volumeMounts:
+            - {name: orders, mountPath: /data}
+      containers:
+        - name: mcp-server
+          image: mcp-server:local
+          imagePullPolicy: Never
+          ports:
+            - {containerPort: 8080}
+          env:
+            - {name: ORDERS_DB, value: /data/orders.db}
+          volumeMounts:
+            - {name: orders, mountPath: /data}
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits: {cpu: "500m", memory: "512Mi"}
+      volumes:
+        - name: orders
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-server
+  namespace: default
+spec:
+  selector: {app: mcp-server}
+  ports:
+    - port: 8080
+      targetPort: 8080
+      # The marker that tells agentgateway this is MCP, not plain HTTP.
+      appProtocol: agentgateway.dev/mcp
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: agentgateway
+spec:
+  controllerName: agentgateway.dev/agentgateway
+---
+# NOT named "agentgateway": the Helm chart already owns a Deployment by that name in this
+# namespace, and the Gateway controller creates a data-plane Deployment named after the
+# Gateway. Colliding produces an immutable-selector error that retries forever while the
+# Gateway still reports Programmed=True — green status, no data plane.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mcp-gateway
+  namespace: agentgateway-system
+spec:
+  gatewayClassName: agentgateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: mcp-backend
+  namespace: default
+spec:
+  mcp:
+    targets:
+      - name: mcp-server
+        static:
+          backendRef:
+            name: mcp-server
+          port: 8080
+          protocol: StreamableHTTP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp
+  namespace: default
+spec:
+  parentRefs:
+    - name: mcp-gateway
+      namespace: agentgateway-system
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /mcp
+      backendRefs:
+        - name: mcp-backend
+          group: agentgateway.dev
+          kind: AgentgatewayBackend
