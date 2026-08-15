@@ -4,79 +4,86 @@ graph LR
   subgraph diagram ["Deployment View: Agentic Platform (local) - Laptop"]
     style diagram fill:#ffffff,stroke:#ffffff
 
-    subgraph 29 ["Developer Laptop (macOS, Apple Silicon)"]
-      style 29 fill:#ffffff,stroke:#444444,color:#444444
+    subgraph 32 ["Developer Laptop (macOS, Apple Silicon)"]
+      style 32 fill:#ffffff,stroke:#444444,color:#444444
 
-      subgraph 30 ["Host OS"]
-        style 30 fill:#ffffff,stroke:#444444,color:#444444
+      subgraph 33 ["Host OS"]
+        style 33 fill:#ffffff,stroke:#444444,color:#444444
 
-        subgraph 31 ["Ollama"]
-          style 31 fill:#ffffff,stroke:#444444,color:#444444
+        subgraph 34 ["Ollama"]
+          style 34 fill:#ffffff,stroke:#444444,color:#444444
 
-          32["<div style='font-weight: bold'>Local Model Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ollama (workshop: Amazon Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>Serves qwen3:8b and<br />llama3.2:1b over an<br />OpenAI-compatible API. Runs<br />on the HOST, not in the<br />cluster, because that is<br />where the GPU is.</div>"]
-          style 32 fill:#6b4fa0,stroke:#4a3770,color:#ffffff
+          35["<div style='font-weight: bold'>Local Model Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ollama (workshop: Amazon Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>Serves qwen3:8b and<br />llama3.2:1b over an<br />OpenAI-compatible API. Runs<br />on the HOST, not in the<br />cluster, because that is<br />where the GPU is.</div>"]
+          style 35 fill:#6b4fa0,stroke:#4a3770,color:#ffffff
         end
 
       end
 
-      subgraph 33 ["Docker Desktop VM"]
-        style 33 fill:#ffffff,stroke:#444444,color:#444444
+      subgraph 36 ["Docker Desktop VM"]
+        style 36 fill:#ffffff,stroke:#444444,color:#444444
 
-        subgraph 34 ["k3d cluster 'agentic'"]
-          style 34 fill:#ffffff,stroke:#444444,color:#444444
+        subgraph 37 ["k3d cluster 'agentic'"]
+          style 37 fill:#ffffff,stroke:#444444,color:#444444
 
-          subgraph 35 ["namespace: envoy-gateway-system"]
-            style 35 fill:#ffffff,stroke:#444444,color:#444444
+          subgraph 38 ["namespace: envoy-gateway-system"]
+            style 38 fill:#ffffff,stroke:#444444,color:#444444
 
-            subgraph 36 ["Envoy data plane"]
-              style 36 fill:#ffffff,stroke:#444444,color:#444444
+            subgraph 39 ["Envoy data plane"]
+              style 39 fill:#ffffff,stroke:#444444,color:#444444
 
-              37["<div style='font-weight: bold'>AI Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>LAB 0 control point. Owns<br />WHICH model answers: agents<br />ask for an alias, the gateway<br />rewrites it to a real model.<br />Also the only thing that<br />would hold a model<br />credential.</div>"]
-              style 37 fill:#b8860b,stroke:#805d07,color:#ffffff
+              40["<div style='font-weight: bold'>AI Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>LAB 0 control point. Owns<br />WHICH model answers: agents<br />ask for an alias, the gateway<br />rewrites it to a real model.<br />Also the only thing that<br />would hold a model<br />credential.</div>"]
+              style 40 fill:#b8860b,stroke:#805d07,color:#ffffff
             end
 
           end
 
-          subgraph 39 ["namespace: agentgateway-system"]
-            style 39 fill:#ffffff,stroke:#444444,color:#444444
+          subgraph 42 ["namespace: agentgateway-system"]
+            style 42 fill:#ffffff,stroke:#444444,color:#444444
 
-            40["<div style='font-weight: bold'>Agent Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: agentgateway (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>LAB 3/4 control point. Owns<br />WHICH TOOLS an agent can see<br />and call. Because tool calls<br />now cross a network they are<br />interceptable — lab 4 spends<br />that.</div>"]
-            style 40 fill:#b8860b,stroke:#805d07,color:#ffffff
+            43["<div style='font-weight: bold'>Agent Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: agentgateway (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>LAB 3/4 control point. Owns<br />WHICH TOOLS an agent can see<br />and call. Because tool calls<br />now cross a network they are<br />interceptable — lab 4 spends<br />that.</div>"]
+            style 43 fill:#b8860b,stroke:#805d07,color:#ffffff
           end
 
-          subgraph 41 ["namespace: telemetry"]
-            style 41 fill:#ffffff,stroke:#444444,color:#444444
+          subgraph 44 ["namespace: identity"]
+            style 44 fill:#ffffff,stroke:#444444,color:#444444
 
-            42["<div style='font-weight: bold'>OTel Collector</div><div style='font-size: 70%; margin-top: 0px'>[Container: OpenTelemetry Collector (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>LAB 2 control point. Every<br />workload speaks plain OTLP<br />here and holds NO credential<br />for the tracing backend — one<br />key to rotate. Also where<br />telemetry is SHAPED: a filter<br />rule drops the per-SSE-chunk<br />spans that took one trace<br />from 543 spans to 9.</div>"]
-            style 42 fill:#b8860b,stroke:#805d07,color:#ffffff
-            44["<div style='font-weight: bold'>Trace Backend</div><div style='font-size: 70%; margin-top: 0px'>[Container: Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)]</div><div style='font-size: 80%; margin-top:10px'>Renders the agent trace tree:<br />invoke_agent -> event loop -><br />chat -> tool, with GenAI<br />semantic-convention<br />attributes.</div>"]
-            style 44 fill:#00695c,stroke:#004940,color:#ffffff
+            45["<div style='font-weight: bold'>Identity Provider</div><div style='font-size: 70%; margin-top: 0px'>[Container: Keycloak (workshop: Amazon Cognito)]</div><div style='font-size: 80%; margin-top:10px'>Issues JWTs carrying a<br />`groups` claim. The ENTIRE<br />Cognito coupling this<br />replaces was two strings<br />(issuer, JWKS) and one claim<br />name: cognito:groups -><br />groups.</div>"]
+            style 45 fill:#ad1457,stroke:#790e3c,color:#ffffff
           end
 
-          subgraph 46 ["namespace: default"]
-            style 46 fill:#ffffff,stroke:#444444,color:#444444
+          subgraph 47 ["namespace: telemetry"]
+            style 47 fill:#ffffff,stroke:#444444,color:#444444
 
-            subgraph 47 ["Deployment: customer-agent"]
-              style 47 fill:#ffffff,stroke:#444444,color:#444444
+            48["<div style='font-weight: bold'>OTel Collector</div><div style='font-size: 70%; margin-top: 0px'>[Container: OpenTelemetry Collector (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>LAB 2 control point. Every<br />workload speaks plain OTLP<br />here and holds NO credential<br />for the tracing backend — one<br />key to rotate. Also where<br />telemetry is SHAPED: a filter<br />rule drops the per-SSE-chunk<br />spans that took one trace<br />from 543 spans to 9.</div>"]
+            style 48 fill:#b8860b,stroke:#805d07,color:#ffffff
+            50["<div style='font-weight: bold'>Trace Backend</div><div style='font-size: 70%; margin-top: 0px'>[Container: Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)]</div><div style='font-size: 80%; margin-top:10px'>Renders the agent trace tree:<br />invoke_agent -> event loop -><br />chat -> tool, with GenAI<br />semantic-convention<br />attributes.</div>"]
+            style 50 fill:#00695c,stroke:#004940,color:#ffffff
+          end
 
-              48["<div style='font-weight: bold'>Customer Agent</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, Strands Agents SDK, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>Agent loop: picks tools,<br />calls the model, streams SSE.<br />agent.py/server.py run<br />VERBATIM from the workshop.</div>"]
-              style 48 fill:#c0392b,stroke:#86271e,color:#ffffff
+          subgraph 52 ["namespace: default"]
+            style 52 fill:#ffffff,stroke:#444444,color:#444444
+
+            subgraph 53 ["Deployment: customer-agent"]
+              style 53 fill:#ffffff,stroke:#444444,color:#444444
+
+              54["<div style='font-weight: bold'>Customer Agent</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, Strands Agents SDK, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>Agent loop: picks tools,<br />calls the model, streams SSE.<br />agent.py/server.py run<br />VERBATIM from the workshop.</div>"]
+              style 54 fill:#c0392b,stroke:#86271e,color:#ffffff
             end
 
-            subgraph 52 ["Deployment: mcp-server"]
-              style 52 fill:#ffffff,stroke:#444444,color:#444444
+            subgraph 58 ["Deployment: mcp-server"]
+              style 58 fill:#ffffff,stroke:#444444,color:#444444
 
-              53["<div style='font-weight: bold'>MCP Tool Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastMCP (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>lookup_order,<br />check_inventory,<br />initiate_return. Ships and<br />scales independently of the<br />agent; discovered at runtime<br />via list_tools.</div>"]
-              style 53 fill:#1565c0,stroke:#0e4686,color:#ffffff
-              55[("<div style='font-weight: bold'>Orders Store</div><div style='font-size: 70%; margin-top: 0px'>[Container: SQLite (workshop: Amazon DynamoDB)]</div><div style='font-size: 80%; margin-top:10px'>500 seeded orders. Read via a<br />scoped, parameterized query —<br />the agent never writes SQL.</div>")]
-              style 55 fill:#2e7d32,stroke:#205723,color:#ffffff
+              59["<div style='font-weight: bold'>MCP Tool Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastMCP (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>lookup_order,<br />check_inventory,<br />initiate_return. Ships and<br />scales independently of the<br />agent; discovered at runtime<br />via list_tools.</div>"]
+              style 59 fill:#1565c0,stroke:#0e4686,color:#ffffff
+              61[("<div style='font-weight: bold'>Orders Store</div><div style='font-size: 70%; margin-top: 0px'>[Container: SQLite (workshop: Amazon DynamoDB)]</div><div style='font-size: 80%; margin-top:10px'>500 seeded orders. Read via a<br />scoped, parameterized query —<br />the agent never writes SQL.</div>")]
+              style 61 fill:#2e7d32,stroke:#205723,color:#ffffff
             end
 
-            subgraph 57 ["Deployment: chat-ui"]
-              style 57 fill:#ffffff,stroke:#444444,color:#444444
+            subgraph 63 ["Deployment: chat-ui"]
+              style 63 fill:#ffffff,stroke:#444444,color:#444444
 
-              58["<div style='font-weight: bold'>Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: Chainlit (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>Streams the agent's answer<br />and renders tool calls as<br />steps.</div>"]
-              style 58 fill:#438dd5,stroke:#2e6295,color:#ffffff
+              64["<div style='font-weight: bold'>Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: Chainlit (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>Streams the agent's answer<br />and renders tool calls as<br />steps.</div>"]
+              style 64 fill:#438dd5,stroke:#2e6295,color:#ffffff
             end
 
           end
@@ -87,14 +94,15 @@ graph LR
 
     end
 
-    37-. "<div>Rewrites alias -> qwen3:8b,<br />forwards</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->32
-    37-. "<div>Spans (configured; not yet<br />landing — see ADR 0004)</div><div style='font-size: 70%'>[OTLP/gRPC]</div>" .->42
-    42-. "<div>The single authenticated<br />egress</div><div style='font-size: 70%'>[OTLP/gRPC]</div>" .->44
-    48-. "<div>Chat completions, asking for<br />the ALIAS 'local-smart'</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->37
-    48-. "<div>list_tools at session start,<br />then tool calls</div><div style='font-size: 70%'>[MCP / StreamableHTTP]</div>" .->40
-    48-. "<div>Spans, zero tracing code —<br />opentelemetry-instrument<br />patches httpx + FastAPI</div><div style='font-size: 70%'>[OTLP/HTTP]</div>" .->42
-    40-. "<div>Proxies MCP; enforces policy<br />in lab 4</div><div style='font-size: 70%'>[MCP / StreamableHTTP]</div>" .->53
-    53-. "<div>Scoped, parameterized read</div><div style='font-size: 70%'>[SQLite]</div>" .->55
-    58-. "<div>POST /chat, consumes SSE</div><div style='font-size: 70%'>[HTTP/SSE]</div>" .->48
+    40-. "<div>Rewrites alias -> qwen3:8b,<br />forwards</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->35
+    43-. "<div>Fetches JWKS, validates every<br />token (mode: Strict)</div><div style='font-size: 70%'>[HTTP]</div>" .->45
+    40-. "<div>Spans (configured; not yet<br />landing — see ADR 0004)</div><div style='font-size: 70%'>[OTLP/gRPC]</div>" .->48
+    48-. "<div>The single authenticated<br />egress</div><div style='font-size: 70%'>[OTLP/gRPC]</div>" .->50
+    54-. "<div>Chat completions, asking for<br />the ALIAS 'local-smart'</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->40
+    54-. "<div>list_tools at session start,<br />then tool calls</div><div style='font-size: 70%'>[MCP / StreamableHTTP]</div>" .->43
+    54-. "<div>Spans, zero tracing code —<br />opentelemetry-instrument<br />patches httpx + FastAPI</div><div style='font-size: 70%'>[OTLP/HTTP]</div>" .->48
+    43-. "<div>Proxies MCP, and enforces<br />per-tool authorization</div><div style='font-size: 70%'>[MCP / StreamableHTTP]</div>" .->59
+    59-. "<div>Scoped, parameterized read</div><div style='font-size: 70%'>[SQLite]</div>" .->61
+    64-. "<div>POST /chat, consumes SSE</div><div style='font-size: 70%'>[HTTP/SSE]</div>" .->54
 
   end

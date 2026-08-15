@@ -59,6 +59,10 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                 tags "Tools"
             }
 
+            idp = container "Identity Provider" "Issues JWTs carrying a `groups` claim. The ENTIRE Cognito coupling this replaces was two strings (issuer, JWKS) and one claim name: cognito:groups -> groups." "Keycloak (workshop: Amazon Cognito)" {
+                tags "Identity"
+            }
+
             orders = container "Orders Store" "500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." "SQLite (workshop: Amazon DynamoDB)" {
                 tags "Data"
             }
@@ -71,7 +75,9 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
         ui    -> agent    "POST /chat, consumes SSE" "HTTP/SSE"
         agent -> gateway  "Chat completions, asking for the ALIAS 'local-smart'" "HTTP, OpenAI wire format"
         agent -> mcpgw    "list_tools at session start, then tool calls" "MCP / StreamableHTTP"
-        mcpgw -> mcp      "Proxies MCP; enforces policy in lab 4" "MCP / StreamableHTTP"
+        mcpgw -> mcp      "Proxies MCP, and enforces per-tool authorization" "MCP / StreamableHTTP"
+        mcpgw -> idp      "Fetches JWKS, validates every token (mode: Strict)" "HTTP"
+        shopper -> idp    "Signs in as a persona" "OIDC"
         mcp   -> orders   "Scoped, parameterized read" "SQLite"
 
         gateway -> ollama    "Rewrites alias -> qwen3:8b, forwards" "HTTP, OpenAI wire format"
@@ -102,6 +108,9 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                         }
                         deploymentNode "namespace: agentgateway-system" "Gateway named mcp-gateway, NOT agentgateway — the Helm chart owns a Deployment of that name and the collision is an immutable-selector error that retries forever behind a green status" {
                             containerInstance mcpgw
+                        }
+                        deploymentNode "namespace: identity" {
+                            containerInstance idp
                         }
                         deploymentNode "namespace: telemetry" {
                             containerInstance collector
@@ -176,6 +185,10 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
             }
             element "Agent" {
                 background #c0392b
+                color #ffffff
+            }
+            element "Identity" {
+                background #ad1457
                 color #ffffff
             }
             element "Tools" {

@@ -48,6 +48,18 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 450;
   }
+  // Element,Container,Identity
+  .Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk= {
+    BackgroundColor: #ad1457;
+    LineColor: #790e3c;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
   // Element,Container,Model
   .Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw= {
     BackgroundColor: #6b4fa0;
@@ -148,6 +160,10 @@ rectangle "Developer Laptop (macOS, Apple Silicon)\n<size:16>[Deployment Node]</
         hexagon "==Agent Gateway\n<size:16>[Container: agentgateway (workshop: same)]</size>\n\nLAB 3/4 control point. Owns WHICH TOOLS an agent can see and call. Because tool calls now cross a network they are interceptable — lab 4 spends that." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1
       }
 
+      rectangle "namespace: identity\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceidentity {
+        rectangle "==Identity Provider\n<size:16>[Container: Keycloak (workshop: Amazon Cognito)]</size>\n\nIssues JWTs carrying a `groups` claim. The ENTIRE Cognito coupling this replaces was two strings (issuer, JWKS) and one claim name: cognito:groups -> groups." <<Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceidentity.IdentityProvider_1
+      }
+
       rectangle "namespace: telemetry\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry {
         hexagon "==OTel Collector\n<size:16>[Container: OpenTelemetry Collector (workshop: same)]</size>\n\nLAB 2 control point. Every workload speaks plain OTLP here and holds NO credential for the tracing backend — one key to rotate. Also where telemetry is SHAPED: a filter rule drops the per-SSE-chunk spans that took one trace from 543 spans to 9." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1
         rectangle "==Trace Backend\n<size:16>[Container: Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)]</size>\n\nRenders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes." <<Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.TraceBackend_1
@@ -176,12 +192,13 @@ rectangle "Developer Laptop (macOS, Apple Silicon)\n<size:16>[Deployment Node]</
 }
 
 Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS.Ollama.LocalModelRuntime_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Rewrites alias -> qwen3:8b, forwards\n<size:16>[HTTP, OpenAI wire format]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceidentity.IdentityProvider_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Fetches JWKS, validates every token (mode: Strict)\n<size:16>[HTTP]</size>"
 Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 <<Relationship-UmVsYXRpb25zaGlwLEJyb2tlbg==>> : "Spans (configured; not yet landing — see ADR 0004)\n<size:16>[OTLP/gRPC]</size>"
 Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.TraceBackend_1 <<Relationship-UmVsYXRpb25zaGlw>> : "The single authenticated egress\n<size:16>[OTLP/gRPC]</size>"
 Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Chat completions, asking for the ALIAS 'local-smart'\n<size:16>[HTTP, OpenAI wire format]</size>"
 Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 <<Relationship-UmVsYXRpb25zaGlw>> : "list_tools at session start, then tool calls\n<size:16>[MCP / StreamableHTTP]</size>"
 Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Spans, zero tracing code — opentelemetry-instrument patches httpx + FastAPI\n<size:16>[OTLP/HTTP]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Proxies MCP; enforces policy in lab 4\n<size:16>[MCP / StreamableHTTP]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Proxies MCP, and enforces per-tool authorization\n<size:16>[MCP / StreamableHTTP]</size>"
 Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.OrdersStore_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Scoped, parameterized read\n<size:16>[SQLite]</size>"
 Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentchatui.ChatUI_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 <<Relationship-UmVsYXRpb25zaGlw>> : "POST /chat, consumes SSE\n<size:16>[HTTP/SSE]</size>"
 

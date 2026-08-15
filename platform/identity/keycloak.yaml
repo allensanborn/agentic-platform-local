@@ -1,0 +1,59 @@
+# Lab 4 — the identity substrate.
+#
+# Stands in for the workshop's Amazon Cognito. The coupling being replaced is remarkably
+# small: two strings (issuer URL, JWKS URL) and one claim name. The workshop's policies read
+# jwt["cognito:groups"]; ours read jwt["groups"]. Everything else about lab 4 is unchanged.
+#
+# Dev mode (start-dev) on purpose: no TLS, in-memory H2, realm imported at boot. This is an
+# identity provider for a demo, not a production deployment, and pretending otherwise would
+# add ceremony without adding a lesson.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: identity
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: keycloak}
+  template:
+    metadata:
+      labels: {app: keycloak}
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.0
+          args: ["start-dev", "--import-realm", "--http-enabled=true"]
+          env:
+            - {name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin}
+            - {name: KC_BOOTSTRAP_ADMIN_PASSWORD, value: admin}
+            # The issuer must match what the gateway validates and what clients see.
+            # Frontend URL pins it to the in-cluster Service name.
+            - {name: KC_HOSTNAME, value: "http://keycloak.identity.svc.cluster.local:8080"}
+            - {name: KC_HOSTNAME_STRICT, value: "false"}
+            - {name: KC_HTTP_RELATIVE_PATH, value: "/"}
+          ports:
+            - {containerPort: 8080}
+          volumeMounts:
+            - {name: realm, mountPath: /opt/keycloak/data/import}
+          readinessProbe:
+            httpGet: {path: /realms/anycompany, port: 8080}
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            failureThreshold: 40
+          resources:
+            requests: {cpu: "200m", memory: "512Mi"}
+            limits: {cpu: "2", memory: "1536Mi"}
+      volumes:
+        - name: realm
+          configMap: {name: keycloak-realm}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: identity
+spec:
+  selector: {app: keycloak}
+  ports:
+    - {port: 8080, targetPort: 8080}

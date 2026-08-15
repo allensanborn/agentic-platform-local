@@ -48,6 +48,18 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 450;
   }
+  // Element,Container,Identity
+  .Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk= {
+    BackgroundColor: #ad1457;
+    LineColor: #790e3c;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
   // Element,Container,Model
   .Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw= {
     BackgroundColor: #6b4fa0;
@@ -168,6 +180,7 @@ rectangle "Agentic Platform (local)\n<size:16>[Software System]</size>" <<Bounda
   rectangle "==Trace Backend\n<size:16>[Container: Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)]</size>\n\nRenders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes." <<Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ==>> as AgenticPlatformlocal.TraceBackend
   hexagon "==Agent Gateway\n<size:16>[Container: agentgateway (workshop: same)]</size>\n\nLAB 3/4 control point. Owns WHICH TOOLS an agent can see and call. Because tool calls now cross a network they are interceptable — lab 4 spends that." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.AgentGateway
   rectangle "==MCP Tool Server\n<size:16>[Container: Python, FastMCP (workshop: same)]</size>\n\nlookup_order, check_inventory, initiate_return. Ships and scales independently of the agent; discovered at runtime via list_tools." <<Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM=>> as AgenticPlatformlocal.MCPToolServer
+  rectangle "==Identity Provider\n<size:16>[Container: Keycloak (workshop: Amazon Cognito)]</size>\n\nIssues JWTs carrying a `groups` claim. The ENTIRE Cognito coupling this replaces was two strings (issuer, JWKS) and one claim name: cognito:groups -> groups." <<Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk=>> as AgenticPlatformlocal.IdentityProvider
   database "==Orders Store\n<size:16>[Container: SQLite (workshop: Amazon DynamoDB)]</size>\n\n500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>> as AgenticPlatformlocal.OrdersStore
   rectangle "==Chat UI\n<size:16>[Container: Chainlit (workshop: same)]</size>\n\nStreams the agent's answer and renders tool calls as steps." <<Element-RWxlbWVudCxDb250YWluZXIsVUk=>> as AgenticPlatformlocal.ChatUI
   rectangle "==Customer Agent\n<size:16>[Container: Python, Strands Agents SDK, FastAPI]</size>\n\nAgent loop: picks tools, calls the model, streams SSE. agent.py/server.py run VERBATIM from the workshop." <<Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ=>> as AgenticPlatformlocal.CustomerAgent
@@ -181,7 +194,9 @@ PlatformOperator --> AgenticPlatformlocal.AIGateway <<Relationship-UmVsYXRpb25za
 AgenticPlatformlocal.ChatUI --> AgenticPlatformlocal.CustomerAgent <<Relationship-UmVsYXRpb25zaGlw>> : "POST /chat, consumes SSE\n<size:16>[HTTP/SSE]</size>"
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.AIGateway <<Relationship-UmVsYXRpb25zaGlw>> : "Chat completions, asking for the ALIAS 'local-smart'\n<size:16>[HTTP, OpenAI wire format]</size>"
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.AgentGateway <<Relationship-UmVsYXRpb25zaGlw>> : "list_tools at session start, then tool calls\n<size:16>[MCP / StreamableHTTP]</size>"
-AgenticPlatformlocal.AgentGateway --> AgenticPlatformlocal.MCPToolServer <<Relationship-UmVsYXRpb25zaGlw>> : "Proxies MCP; enforces policy in lab 4\n<size:16>[MCP / StreamableHTTP]</size>"
+AgenticPlatformlocal.AgentGateway --> AgenticPlatformlocal.MCPToolServer <<Relationship-UmVsYXRpb25zaGlw>> : "Proxies MCP, and enforces per-tool authorization\n<size:16>[MCP / StreamableHTTP]</size>"
+AgenticPlatformlocal.AgentGateway --> AgenticPlatformlocal.IdentityProvider <<Relationship-UmVsYXRpb25zaGlw>> : "Fetches JWKS, validates every token (mode: Strict)\n<size:16>[HTTP]</size>"
+Shopper --> AgenticPlatformlocal.IdentityProvider <<Relationship-UmVsYXRpb25zaGlw>> : "Signs in as a persona\n<size:16>[OIDC]</size>"
 AgenticPlatformlocal.MCPToolServer --> AgenticPlatformlocal.OrdersStore <<Relationship-UmVsYXRpb25zaGlw>> : "Scoped, parameterized read\n<size:16>[SQLite]</size>"
 AgenticPlatformlocal.AIGateway --> AgenticPlatformlocal.LocalModelRuntime <<Relationship-UmVsYXRpb25zaGlw>> : "Rewrites alias -> qwen3:8b, forwards\n<size:16>[HTTP, OpenAI wire format]</size>"
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.OTelCollector <<Relationship-UmVsYXRpb25zaGlw>> : "Spans, zero tracing code — opentelemetry-instrument patches httpx + FastAPI\n<size:16>[OTLP/HTTP]</size>"

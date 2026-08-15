@@ -44,6 +44,18 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 200;
   }
+  // Element,Container,Identity
+  .Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk= {
+    BackgroundColor: #ad1457;
+    LineColor: #790e3c;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 200;
+  }
   // Element,Container,Model
   .Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw= {
     BackgroundColor: #6b4fa0;
@@ -167,6 +179,8 @@ rectangle "==Container, Agent" <<Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ=>>
 hexagon "==Container, ControlPoint" <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>>
 
 database "==Container, Data" <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>>
+
+rectangle "==Container, Identity" <<Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk=>>
 
 rectangle "==Container, Model" <<Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw=>>
 

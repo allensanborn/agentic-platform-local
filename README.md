@@ -14,7 +14,7 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 | 1 | Strands agent + `lookup_order` tool + SSE + Chainlit UI, all in-cluster | ✅ **working** |
 | 2 | Observability: OTel auto-instrumentation + collector | ✅ **working** (Jaeger not Langfuse; gateway span is a known gap — [ADR 0004](docs/adr/0004-observability-backend-and-gateway-spans.md)) |
 | 3 | MCP tool serving via agentgateway + least privilege | ✅ **working** |
-| 4 | Authorization (Keycloak + AgentgatewayPolicy) | not started |
+| 4 | Authorization: Keycloak + deny-by-default per-tool policy | ✅ **working** |
 | 5 | Sandboxed code execution | not started |
 | 6-7 | Autonomous coding agent | not started |
 
@@ -30,6 +30,20 @@ $ kubectl patch aigatewayroute local --type=json \
 local-fast   -> llama3.2:1b
 local-smart  -> qwen3:8b
 ```
+
+**Lab 4 — the same agent, two personas, different capabilities:**
+
+```
+sam (support-associate)  ->  Discovered 2 MCP tools: ['lookup_order', 'initiate_return']
+ana (sales-analyst)      ->  Discovered 1 MCP tools: ['lookup_order']
+no token                 ->  HTTP 401 at the gateway
+```
+
+`check_inventory` is not denied by a rule — it is simply never allowed. An `Allow` list that
+matches nothing denies everything, so an unmapped tool is invisible to everyone. And note the
+failure modes differ: a bad token is a loud 401, while a valid token without the right makes
+the tool *vanish from `tools/list`* — the model never learns the capability exists, so it
+cannot be talked into trying.
 
 ```
 $ python agent.py "My order ID is ORD-1001. Where is it?"

@@ -1,0 +1,82 @@
+# Lab 4 — authorization at the tool-call hop.
+#
+# This is the workshop's highest value-per-effort lab, and the port is nearly free: the entire
+# Cognito coupling was two strings (issuer, JWKS) and ONE claim name. The workshop's
+# expressions read jwt["cognito:groups"]; ours read jwt["groups"]. Nothing else changed.
+#
+# The three-step walk (see the README) changes only `matchExpressions`:
+#   step 1  - 'false'                              deny everything
+#   step 2  - 'mcp.tool.name == "lookup_order"'    one tool, everyone
+#   step 3  + the persona-gated rule below         differentiated
+#
+# Two semantics worth watching for, both preserved:
+#   * An Allow list that matches nothing DENIES everything. Deny-by-default engages the
+#     moment any rule exists, so step 1 is a real, observable state and not a no-op.
+#   * check_inventory is deliberately UNMAPPED. It is not denied by an explicit rule; it is
+#     simply never allowed, which is what deny-by-default means.
+#
+# The failure modes differ in a way that matters:
+#   * missing/invalid token  -> a visible 401 at the Gateway, before any tool logic runs
+#   * valid token, no right  -> the tool VANISHES from tools/list. The agent never discovers
+#     it, so the model does not refuse — it genuinely cannot see the capability.
+---
+# agentgateway will not take a bare JWKS URL; the endpoint has to be a backend it can route
+# to. In the workshop this fronts Cognito over TLS on 443; ours is in-cluster plaintext.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: keycloak-jwks
+  namespace: agentgateway-system
+spec:
+  static:
+    host: keycloak.identity.svc.cluster.local
+    port: 8080
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-authn
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+    - kind: Gateway
+      name: mcp-gateway
+      group: gateway.networking.k8s.io
+  traffic:
+    jwtAuthentication:
+      # Strict: no token is a 401, not an anonymous pass-through.
+      mode: Strict
+      providers:
+        - issuer: http://keycloak.identity.svc.cluster.local:8080/realms/anycompany
+          audiences: ["account"]
+          jwks:
+            remote:
+              backendRef:
+                group: agentgateway.dev
+                kind: AgentgatewayBackend
+                name: keycloak-jwks
+                namespace: agentgateway-system
+                port: 8080
+              jwksPath: /realms/anycompany/protocol/openid-connect/certs
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-tool-authz
+  namespace: default
+spec:
+  targetRefs:
+    - kind: AgentgatewayBackend
+      name: mcp-backend
+      group: agentgateway.dev
+  backend:
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          matchExpressions:
+            # Everyone who is authenticated may look up an order.
+            - 'mcp.tool.name == "lookup_order"'
+            # Only support may start a return. Expressions are OR-ed.
+            - 'mcp.tool.name == "initiate_return" && "support-associate" in jwt["groups"]'
+            # check_inventory is intentionally absent. See the header.

@@ -1,0 +1,84 @@
+{
+  "realm": "anycompany",
+  "enabled": true,
+  "accessTokenLifespan": 900,
+  "groups": [
+    {
+      "name": "support-associate"
+    },
+    {
+      "name": "sales-analyst"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "anycompany-agent",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "groups",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "sam",
+      "enabled": true,
+      "email": "sam@anycompany.test",
+      "firstName": "Sam",
+      "lastName": "Support",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sam",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/support-associate"
+      ],
+      "realmRoles": [
+        "default-roles-anycompany"
+      ]
+    },
+    {
+      "username": "ana",
+      "enabled": true,
+      "email": "ana@anycompany.test",
+      "firstName": "Ana",
+      "lastName": "Analyst",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ana",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/sales-analyst"
+      ],
+      "realmRoles": [
+        "default-roles-anycompany"
+      ]
+    }
+  ]
+}
