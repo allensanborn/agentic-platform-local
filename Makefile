@@ -23,16 +23,33 @@ agent: seed      ## one-shot CLI run against the model
 serve: seed      ## FastAPI + SSE on :8081
 	cd $(AGENT) && . .venv/bin/activate && PORT=8081 python server.py
 
-cluster:         ## k3d cluster + Envoy Gateway + Envoy AI Gateway
+cluster:         ## k3d cluster + Envoy Gateway + Envoy AI Gateway (lab 0)
 	k3d cluster create agentic --agents 1 --wait || true
+	# The extensionManager block in this values file is REQUIRED and is the whole ballgame:
+	# the AI Gateway controller runs as an Envoy Gateway xDS extension server, and that is
+	# how the ext_proc filter gets injected. Without it every request returns
+	# "No matching route found" even though every CRD reports Accepted=True. See ADR 0002.
+	curl -fsSL -o /tmp/eg-values.yaml https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-values.yaml
 	helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm --version v1.5.6 \
-	  -n envoy-gateway-system --create-namespace \
-	  --set config.envoyGateway.extensionApis.enableBackend=true
+	  -n envoy-gateway-system --create-namespace -f /tmp/eg-values.yaml
 	helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm --version v1.0.0 \
 	  -n envoy-ai-gateway-system --create-namespace --take-ownership
 	helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm --version v1.0.0 \
 	  -n envoy-ai-gateway-system --create-namespace --take-ownership
-	kubectl wait --timeout=240s -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
+	kubectl wait --timeout=300s -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
+	kubectl apply -f platform/gateway/ai-gateway.yaml
+
+serve-model:     ## Ollama bound to all interfaces so the cluster can reach it
+	OLLAMA_HOST=0.0.0.0:11434 ollama serve
+
+gw-forward:      ## port-forward the gateway to :8080
+	kubectl port-forward -n envoy-gateway-system \
+	  svc/$$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway -o jsonpath='{.items[0].metadata.name}') 8080:80
+
+agent-via-gateway: seed  ## the lab 0 + 1 payoff: agent -> gateway alias -> Ollama
+	cd $(AGENT) && . .venv/bin/activate && \
+	  MODEL_BASE_URL=http://localhost:8080/v1 MODEL_ID=local-fast \
+	  python agent.py "My order ID is ORD-1003. Where is it?"
 
 gateway:         ## apply the lab-0 gateway manifests (see ADR 0002 — not yet routing)
 	kubectl apply -f platform/gateway/ai-gateway.yaml

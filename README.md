@@ -10,7 +10,7 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 
 | Lab | Component | Status |
 |---|---|---|
-| 0 | Model gateway (Envoy AI Gateway → Ollama) | ⚠️ **blocked** — see [ADR 0002](docs/adr/0002-ai-gateway-extproc-not-wired.md) |
+| 0 | Model gateway (Envoy AI Gateway → Ollama), alias table | ✅ **working** |
 | 1 | Strands agent + `lookup_order` tool + SSE | ✅ **working** |
 | 2 | Observability (Langfuse / OTel) | not started |
 | 3 | MCP tool serving | not started |
@@ -18,7 +18,18 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 | 5 | Sandboxed code execution | not started |
 | 6-7 | Autonomous coding agent | not started |
 
-**What actually runs today:** a Strands agent answering order questions against a local SQLite database, driven by `qwen3:8b` on Ollama, streaming SSE with the workshop's exact wire contract.
+**What actually runs today:** a Strands agent answering order questions against a local SQLite database, reaching its model *through the gateway by alias*, streaming SSE with the workshop's exact wire contract.
+
+The headline demo — swapping the model under a running agent with no code, image, or config change:
+
+```bash
+$ kubectl patch aigatewayroute local --type=json \
+    -p '[{"op":"replace","path":"/spec/rules/0/backendRefs/0/modelNameOverride","value":"llama3.2:1b"}]'
+
+# same alias, same agent, different model now answering
+local-fast   -> llama3.2:1b
+local-smart  -> qwen3:8b
+```
 
 ```
 $ python agent.py "My order ID is ORD-1001. Where is it?"

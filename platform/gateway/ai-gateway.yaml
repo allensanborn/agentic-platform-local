@@ -33,9 +33,16 @@ spec:
       protocol: HTTP
       port: 80
 ---
-# Ollama runs on the macOS host, outside the k3d cluster, because that is where
-# the GPU is. k3d injects `host.k3d.internal` into CoreDNS for exactly this.
-# On the Windows/RTX-3070 target the same indirection points at the WSL2 host.
+# Ollama runs on the host, outside the k3d cluster, because that is where the GPU is.
+#
+# Use host.docker.internal, NOT host.k3d.internal. k3d injects host.k3d.internal into
+# CoreDNS and it looks like the obvious choice, but on macOS it resolves to the Docker
+# bridge gateway (192.168.147.1) — which is the Linux VM Docker Desktop runs, not the Mac
+# where Ollama is listening. Verified from inside the cluster:
+#     host.docker.internal -> 200
+#     host.k3d.internal    -> connection refused
+# Ollama must also be bound to all interfaces (OLLAMA_HOST=0.0.0.0:11434); it listens on
+# 127.0.0.1 by default, which the cluster cannot reach either.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
@@ -44,7 +51,7 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: host.k3d.internal
+        hostname: host.docker.internal
         port: 11434
 ---
 # schema.name: OpenAI is the load-bearing field — it says "this backend speaks
@@ -78,6 +85,13 @@ spec:
     # THE ALIAS TABLE. Client-facing name on the left, real model on the right.
     # Workshop equivalent:
     #   claude-sonnet -> us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    #
+    # Swapping the model an agent uses is an edit to THIS table and nothing else — no agent
+    # code, image, or config changes. That is the whole thesis of lab 0, and it is worth
+    # demonstrating live:
+    #     kubectl patch aigatewayroute local --type=json \
+    #       -p '[{"op":"replace","path":"/spec/rules/0/backendRefs/0/modelNameOverride","value":"llama3.2:1b"}]'
+    #     # same request, same alias, different model answers
     - matches:
         - headers:
             - type: Exact
@@ -85,4 +99,15 @@ spec:
               value: local-fast
       backendRefs:
         - name: ollama
+          # Small and quick. Answers plainly with no reasoning preamble, which makes it the
+          # better default for demos (see ADR 0003 on qwen3's reasoning tokens).
+          modelNameOverride: llama3.2:1b
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: local-smart
+      backendRefs:
+        - name: ollama
+          # Stronger tool-calling; this is the one that reliably drives lookup_order.
           modelNameOverride: qwen3:8b
