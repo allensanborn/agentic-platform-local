@@ -1,0 +1,19 @@
+# The substitution point for lab 5.
+#
+# The workshop uses `kata-fc` (Kata Containers + Firecracker). Swapping to gVisor is a
+# ONE-FIELD change on every pod that wants a sandbox — runtimeClassName — because RuntimeClass
+# is the seam containerd exposes for exactly this. Every other manifest is unchanged.
+#
+# What is preserved: an isolation boundary with its own kernel, verifiable the same way the
+# workshop verifies its own (`uname -r` inside differs from the node).
+# What is lost: that kernel is a userspace Go program, not a hardware-virtualized VM. A Linux
+# kernel LPE that escapes gVisor lands on the host kernel. See ADR 0005.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+scheduling:
+  # Only the agent node has runsc installed; the server node does not.
+  nodeSelector:
+    kubernetes.io/hostname: k3d-agentic-agent-0

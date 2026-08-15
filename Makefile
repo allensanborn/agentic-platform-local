@@ -97,3 +97,16 @@ ui:              ## port-forward the chat UI to :8000
 
 down:            ## delete the cluster
 	k3d cluster delete agentic
+
+# --- lab 5: sandbox runtime -----------------------------------------------------------
+gvisor:          ## install gVisor (runsc) into the k3d node + register the RuntimeClass
+	./scripts/install-gvisor.sh
+
+sandbox-verify:  ## prove the sandbox has its own kernel (the workshop's own check)
+	@kubectl delete pod gvisor-smoke --ignore-not-found >/dev/null 2>&1 || true
+	@kubectl run gvisor-smoke --image=busybox:1.36 --restart=Never \
+	  --overrides='{"spec":{"runtimeClassName":"gvisor"}}' --command -- sh -c 'uname -r' >/dev/null
+	@sleep 12
+	@echo "node kernel:    $$(docker exec k3d-agentic-agent-0 uname -r)"
+	@echo "sandbox kernel: $$(kubectl logs gvisor-smoke 2>/dev/null)"
+	@kubectl delete pod gvisor-smoke --ignore-not-found >/dev/null 2>&1 || true
