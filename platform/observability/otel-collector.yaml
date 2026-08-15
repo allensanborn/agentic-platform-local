@@ -5,13 +5,16 @@
 # rotate; no workload ever sees it. That property is the lesson, and it is independent of
 # which backend sits behind the collector.
 #
-# Backend substitution (see ADR 0004): the workshop uses Langfuse. Langfuse v4 self-hosted is
-# six containers (web, worker, ClickHouse, MinIO, Redis, Postgres) with official sizing of
-# 4 cores / 16 GiB. This machine's Docker VM has 11.7 GiB total and the cluster already uses
-# ~2 GiB, so Langfuse would starve everything else. Jaeger speaks the same OTLP and renders
-# the same nested spans, so the MECHANISM being taught is fully intact; what is lost is
-# Langfuse's LLM-specific UI (prompt/completion rendering, token cost). Swapping back is an
-# exporter endpoint change in this file.
+# Backend (see ADR 0004): the workshop uses Langfuse, and Jaeger is what this collector
+# currently exports to. The original reason for the substitution — that Langfuse could not
+# fit on this machine — was WRONG and has been retracted. Langfuse now runs here in the
+# `langfuse` namespace at ~1.6 GiB steady state; see platform/observability/langfuse/.
+#
+# This pipeline now FANS OUT to both. An OTLP pipeline exports to every backend it names, so
+# Jaeger and Langfuse receive identical spans — Jaeger for raw span plumbing, Langfuse for the
+# LLM-specific view (prompt/completion rendering, token cost). Keeping both is not indecision:
+# it demonstrates the collector-as-control-point argument better than either alone, because
+# adding a second observability backend cost one exporter block and touched no workload.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -53,6 +56,35 @@ data:
         endpoint: jaeger.telemetry.svc.cluster.local:4317
         tls:
           insecure: true
+
+      # --- Langfuse: deployed and verified, not currently wired ------------------------
+      # To use it, uncomment this exporter and add it to the traces pipeline below. Keep
+      # Jaeger in the list: an OTLP pipeline fans out to every exporter it names, so both
+      # backends receive identical spans and can be compared side by side.
+      #
+      # Three details that are easy to get wrong, all of them found the hard way:
+      #   1. otlphttp, NOT otlp. Langfuse exposes OTLP over HTTP only — there is no gRPC
+      #      listener — so the `otlp/` exporter form used for Jaeger above cannot reach it.
+      #   2. `traces_endpoint` (a full URL including the path), not `endpoint`. With
+      #      `endpoint` the collector appends its own /v1/traces, which 404s against
+      #      Langfuse's /api/public/otel base path.
+      #   3. Auth is HTTP Basic over the API key PAIR, not a bearer token:
+      #        printf 'PUBLIC_KEY:SECRET_KEY' | base64
+      #      The value below is base64 of the fixed demo pair that LANGFUSE_INIT_* in
+      #      20-langfuse.yaml provisions headlessly:
+      #        pk-lf-agentic-platform-local:sk-lf-agentic-platform-local
+      #      Provisioning the keys from config, rather than clicking through a signup, is
+      #      what lets this credential be checked in as a static value.
+      #
+      # Verified end to end: spans sent with telemetrygen to this exact URL and header
+      # appeared in the Langfuse API and as rows in ClickHouse. OTLP ingestion needs
+      # Langfuse >= 3.22.0; the deployment in platform/observability/langfuse/ runs 3.225.2.
+      #
+      otlphttp/langfuse:
+        traces_endpoint: http://langfuse-web.langfuse.svc.cluster.local:3000/api/public/otel/v1/traces
+        headers:
+          Authorization: "Basic cGstbGYtYWdlbnRpYy1wbGF0Zm9ybS1sb2NhbDpzay1sZi1hZ2VudGljLXBsYXRmb3JtLWxvY2Fs"
+
       debug:
         verbosity: basic
     service:
@@ -60,7 +92,8 @@ data:
         traces:
           receivers: [otlp]
           processors: [filter/drop_sse_chunk_spans, batch]
-          exporters: [otlp/jaeger, debug]
+          # Fan out to both backends with:
+          exporters: [otlp/jaeger, otlphttp/langfuse, debug]
 ---
 apiVersion: apps/v1
 kind: Deployment

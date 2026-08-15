@@ -1,0 +1,182 @@
+# langfuse-web (UI + ingest API) and langfuse-worker (async event processing).
+#
+# Both are Node processes. Node does not read cgroup limits for its heap either: the default
+# old-space is ~1.7 GiB regardless of the container limit, so a container limited to 1Gi gets
+# OOM-killed while V8 still believes it has room to grow. NODE_OPTIONS below fixes that, and
+# is the same class of bug as the ClickHouse cache pins in 10-datastores.yaml. Upstream
+# documents this explicitly under "Application containers".
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: langfuse-env
+  namespace: langfuse
+data:
+  # --- ClickHouse -------------------------------------------------------------------
+  # Two URLs on purpose: the app speaks HTTP (8123), the schema migrator speaks the native
+  # protocol (9000). Getting this wrong shows up only as a migration failure at boot.
+  CLICKHOUSE_URL: "http://langfuse-clickhouse.langfuse.svc.cluster.local:8123"
+  CLICKHOUSE_MIGRATION_URL: "clickhouse://langfuse-clickhouse.langfuse.svc.cluster.local:9000"
+  CLICKHOUSE_USER: "clickhouse"
+  # THE load-bearing single-node flag. With this true (the default), every DDL statement is
+  # issued ON CLUSTER, which requires ClickHouse Keeper / ZooKeeper — a seventh container and
+  # another ~500 MiB. False makes migrations run locally against one node.
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+
+  # --- Blob storage (MinIO) ---------------------------------------------------------
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: "langfuse"
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: "auto"
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: "http://langfuse-minio.langfuse.svc.cluster.local:9000"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: "events/"
+  # MinIO is path-style, not the virtual-host style real S3 uses. Without this the SDK builds
+  # bucket.langfuse-minio... hostnames that do not resolve.
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  # Off: exports write large objects and are not part of the lab.
+  LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
+
+  # --- App --------------------------------------------------------------------------
+  # Must match how you actually reach the UI, or NextAuth rejects the login callback.
+  # This assumes `kubectl port-forward -n langfuse svc/langfuse-web 3000:3000`.
+  NEXTAUTH_URL: "http://localhost:3000"
+  TELEMETRY_ENABLED: "false"
+  LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+
+  # --- Headless bootstrap -----------------------------------------------------------
+  # Provisions org, project, user, and a FIXED API key pair on first boot. For a demo this
+  # matters beyond convenience: it means the OTLP exporter block in the collector can be a
+  # static, checked-in credential instead of something copy-pasted out of the UI after a
+  # manual signup. Rotate these if this ever leaves the laptop.
+  LANGFUSE_INIT_ORG_ID: "anycompany"
+  LANGFUSE_INIT_ORG_NAME: "AnyCompany"
+  LANGFUSE_INIT_PROJECT_ID: "agentic-platform"
+  LANGFUSE_INIT_PROJECT_NAME: "agentic-platform-local"
+  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: "pk-lf-agentic-platform-local"
+  LANGFUSE_INIT_PROJECT_SECRET_KEY: "sk-lf-agentic-platform-local"
+  LANGFUSE_INIT_USER_EMAIL: "admin@anycompany.local"
+  LANGFUSE_INIT_USER_NAME: "Admin"
+  LANGFUSE_INIT_USER_PASSWORD: "langfuse123"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: langfuse-web, namespace: langfuse}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: langfuse-web}}
+  template:
+    metadata:
+      labels: {app: langfuse-web}
+    spec:
+      containers:
+        - name: langfuse-web
+          image: langfuse/langfuse:3
+          envFrom:
+            - configMapRef: {name: langfuse-env}
+          env:
+            # This value and the memory limit below are a PAIR and must be changed together.
+            # Set too high, the kernel OOMKills the container (SIGKILL, no stack trace).
+            # Set too low, V8 kills itself first with "FATAL ERROR: Ineffective mark-compacts
+            # near heap limit" — which is what 768 did here: langfuse-web crash-looped during
+            # its init scripts at ~750 MB of heap while the container limit sat at 1536Mi,
+            # completely unused. Two different failures that both look like "OOM" in kubectl.
+            # Rule used here: heap cap ~= limit - 384Mi of off-heap (Next.js server, buffers,
+            # native allocations).
+            - {name: NODE_OPTIONS, value: "--max-old-space-size=1152"}
+            - {name: PORT, value: "3000"}
+            - {name: HOSTNAME, value: "0.0.0.0"}
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: DATABASE_URL}}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: CLICKHOUSE_PASSWORD}}
+            - name: NEXTAUTH_SECRET
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: NEXTAUTH_SECRET}}
+            - name: SALT
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: SALT}}
+            - name: ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: ENCRYPTION_KEY}}
+            - name: REDIS_AUTH
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: REDIS_AUTH}}
+            - {name: REDIS_HOST, value: "langfuse-redis.langfuse.svc.cluster.local"}
+            - {name: REDIS_PORT, value: "6379"}
+            - name: LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: MINIO_ROOT_USER}}
+            - name: LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: MINIO_ROOT_PASSWORD}}
+          ports: [{containerPort: 3000, name: http}]
+          # Generous startup budget: the web container runs both the Postgres and the
+          # ClickHouse migrations before it serves, which is minutes on a cold volume.
+          startupProbe:
+            httpGet: {path: /api/public/health, port: 3000}
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /api/public/health, port: 3000}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: "100m", memory: "384Mi"}
+            # Measured at 848Mi steady-state, so a 1Gi limit left only ~15% headroom and
+            # would have OOMKilled on the first heavy dashboard query. NODE_OPTIONS caps the
+            # V8 heap at 768M; the rest is off-heap (Next.js server, buffers), which is why
+            # the limit has to sit meaningfully above the heap cap rather than equal to it.
+            limits: {cpu: "2", memory: "1536Mi"}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: langfuse-web, namespace: langfuse}
+spec:
+  selector: {app: langfuse-web}
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: langfuse-worker, namespace: langfuse}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: langfuse-worker}}
+  template:
+    metadata:
+      labels: {app: langfuse-worker}
+    spec:
+      containers:
+        - name: langfuse-worker
+          image: langfuse/langfuse-worker:3
+          envFrom:
+            - configMapRef: {name: langfuse-env}
+          env:
+            - {name: NODE_OPTIONS, value: "--max-old-space-size=512"}
+            - {name: PORT, value: "3030"}
+            - {name: HOSTNAME, value: "0.0.0.0"}
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: DATABASE_URL}}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: CLICKHOUSE_PASSWORD}}
+            - name: NEXTAUTH_SECRET
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: NEXTAUTH_SECRET}}
+            - name: SALT
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: SALT}}
+            - name: ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: ENCRYPTION_KEY}}
+            - name: REDIS_AUTH
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: REDIS_AUTH}}
+            - {name: REDIS_HOST, value: "langfuse-redis.langfuse.svc.cluster.local"}
+            - {name: REDIS_PORT, value: "6379"}
+            - name: LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: MINIO_ROOT_USER}}
+            - name: LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: MINIO_ROOT_PASSWORD}}
+          ports: [{containerPort: 3030, name: http}]
+          startupProbe:
+            httpGet: {path: /api/health, port: 3030}
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /api/health, port: 3030}
+            periodSeconds: 15
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits: {cpu: "2", memory: "768Mi"}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: langfuse-worker, namespace: langfuse}
+spec:
+  selector: {app: langfuse-worker}
+  ports: [{name: http, port: 3030, targetPort: 3030}]

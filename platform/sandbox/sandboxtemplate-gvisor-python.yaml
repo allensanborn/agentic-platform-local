@@ -1,0 +1,59 @@
+# SandboxTemplate for the code-execution runtime — the local port of the workshop's
+# manifests/agentsandbox/sandboxtemplate-kata-fc.yaml.
+#
+# Exactly two lines differ from upstream:
+#   runtimeClassName: gvisor   (was kata-fc — this node has no /dev/kvm; ADR 0005)
+#   image: python-runtime-sandbox:local + imagePullPolicy: Never (k3d side-load, no registry)
+#
+# Everything the lab actually teaches is unchanged:
+#   networkPolicyManagement: Managed + egress: [] — "no destination permitted", not
+#     "no rules configured". A custom networkPolicy REPLACES the vetted defaults, so the
+#     router ingress rule has to be restated explicitly.
+#   automountServiceAccountToken: false — the sandbox holds NO Kubernetes credential.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: gvisor-python
+  namespace: agent-sandbox
+spec:
+  networkPolicyManagement: Managed
+  networkPolicy:
+    ingress:
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: agent-sandbox-system
+            podSelector:
+              matchLabels:
+                app: sandbox-router
+    egress: [] # air-gapped: no outbound anywhere
+  service: true # headless Service <sandbox-id>.agent-sandbox.svc for the router/SDK
+  podTemplate:
+    metadata:
+      labels:
+        sandbox-kind: python
+    spec:
+      runtimeClassName: gvisor
+      automountServiceAccountToken: false # sandbox holds NO K8s creds
+      containers:
+        - name: python-runtime
+          image: python-runtime-sandbox:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8888
+          readinessProbe:
+            httpGet:
+              path: "/"
+              port: 8888
+            initialDelaySeconds: 0
+            periodSeconds: 1
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+              ephemeral-storage: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+              ephemeral-storage: "1Gi"
+      restartPolicy: "OnFailure"

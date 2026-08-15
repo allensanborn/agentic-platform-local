@@ -1,0 +1,12 @@
+# Pre-warms gVisor sandboxes so run_python is not blocked on a cold pod start.
+# replicas is the concurrency floor. 2 is plenty for a single-user laptop cluster,
+# and matches the workshop's per-participant setting.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: gvisor-python-pool
+  namespace: agent-sandbox
+spec:
+  replicas: 2
+  sandboxTemplateRef:
+    name: gvisor-python

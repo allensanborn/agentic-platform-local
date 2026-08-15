@@ -1,0 +1,66 @@
+# Air-gap NetworkPolicy for the vended sandboxes.
+#
+# THIS FILE DIVERGES FROM THE WORKSHOP, and the divergence is a bug fix. Read the whole
+# header before changing the podSelector — the obvious selectors are both wrong.
+#
+# There are THREE candidate labels on a sandbox pod, and only one of them works:
+#
+#   agents.x-k8s.io/sandbox-template-ref-hash
+#     What agent-sandbox v0.5.0's controller-generated "<template>-network-policy" selects.
+#     Warm-pool pods never carry it, so the generated policy matches ZERO pods and the
+#     template's `egress: []` is never enforced. (The workshop documents this.)
+#
+#   agents.x-k8s.io/warm-pool-sandbox
+#     What the workshop's own supplemental policy selects
+#     (terraform/manifests/agentsandbox/sandbox-airgap-networkpolicy.yaml). This label IS
+#     present on pods sitting IDLE in the warm pool — which is presumably where it was
+#     verified — but the controller REMOVES it at claim time, because dropping the label is
+#     how the pod is taken out of the pool. So the policy covers the sandbox for exactly as
+#     long as the sandbox is doing nothing, and stops covering it the instant it is handed
+#     untrusted code. Verified live in this cluster:
+#
+#       $ kubectl get pod -n agent-sandbox --show-labels
+#       gvisor-python-pool-djw5g  ...,agents.x-k8s.io/warm-pool-sandbox=0870f7fb,sandbox-kind=python
+#       gvisor-python-pool-jw7nj  ...,sandbox-kind=python          <-- CLAIMED: no warm-pool label
+#
+#     and confirmed by the effect: code running in a claimed sandbox opened a TCP connection
+#     to 1.1.1.1:443. The air-gap was unenforced during the only window that matters.
+#
+#   sandbox-kind: python
+#     Set by our SandboxTemplate's podTemplate.metadata.labels. A non-reserved key, so it
+#     propagates to the pod AND survives the claim relabel. This is the one that is true for
+#     the whole life of the sandbox, pooled or claimed. The workshop already relies on this
+#     survival property for its `kubectl -l sandbox-kind=python` verify commands — it just
+#     did not carry the insight across to the NetworkPolicy.
+#
+# `egress: []` with policyTypes including Egress means "no destination permitted", NOT
+# "no rules configured". That distinction is the lab; the selector above is what makes it
+# apply to anything.
+#
+# k3s ships Flannel + the kube-router network-policy controller, which enforces
+# NetworkPolicy for real — which is precisely why this repo runs on k3s and not kind
+# (ADR 0001: kindnet silently ignores NetworkPolicy, and this demo would LOOK like it works
+# while enforcing nothing).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gvisor-python-airgap
+  namespace: agent-sandbox
+spec:
+  podSelector:
+    matchLabels:
+      sandbox-kind: python
+  policyTypes:
+    - Ingress
+    - Egress
+  egress: [] # air-gapped: no outbound anywhere
+  ingress:
+    # The broker reaches the sandbox only THROUGH the router, so allow ingress
+    # solely from the sandbox-router pods in agent-sandbox-system.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-sandbox-system
+          podSelector:
+            matchLabels:
+              app: sandbox-router

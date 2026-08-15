@@ -45,7 +45,15 @@ model = OpenAIModel(
         "api_key": os.environ.get("MODEL_API_KEY", "not-needed"),
     },
     model_id=os.environ.get("MODEL_ID", "local-smart"),
-    params={"max_tokens": 2048, "temperature": 0.3},
+    # Lab 5 made max_tokens a knob rather than a constant. qwen3 spends this budget on
+    # reasoning BEFORE it emits the tool call (ADR 0003), and run_python's argument is a
+    # whole Python program — the largest tool argument in this repo by an order of magnitude.
+    # At 2048 a charting request reasons itself out of budget and the turn ends with no
+    # tool_use and no answer. See ADR 0007.
+    params={
+        "max_tokens": int(os.environ.get("MODEL_MAX_TOKENS", "2048")),
+        "temperature": 0.3,
+    },
 )
 
 SYSTEM_PROMPT = """You are a friendly and helpful customer service agent for AnyCompany Shop, an online retail store.

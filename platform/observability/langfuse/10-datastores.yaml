@@ -1,0 +1,351 @@
+# The four backing stores. ClickHouse is the only one that needed real work; the other
+# three are near-default and cheap.
+#
+# ---------------------------------------------------------------------------------------
+# ClickHouse config
+# ---------------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-low-memory
+  namespace: langfuse
+data:
+  # Server-level caps. These are the reason the "16 GiB" guidance does not bind here.
+  #
+  # ClickHouse sizes its caches from HOST RAM, not from the cgroup limit, and older builds
+  # do not read the cgroup at all. Left alone on this machine it reserves a 5 GiB mark cache
+  # and targets ~90% of 11.7 GiB for the server total, then gets OOM-killed by a 2 GiB
+  # container limit it never knew about. Every value below is an absolute byte count for
+  # exactly that reason — a *_to_ram_ratio knob would re-derive from the wrong number.
+  low-memory.xml: |
+    <clickhouse>
+      <!-- Hard ceiling for the server process. Held under the 2Gi container limit so
+           ClickHouse throws a query exception instead of being OOM-killed: a failed query
+           is debuggable, a SIGKILL mid-merge is not. -->
+      <max_server_memory_usage>1400000000</max_server_memory_usage>
+
+      <!-- Default mark_cache_size is 5368709120 (5 GiB) and is allocated eagerly. This
+           single line is the largest memory saving in the file. -->
+      <mark_cache_size>134217728</mark_cache_size>
+      <index_mark_cache_size>67108864</index_mark_cache_size>
+      <!-- Off entirely: at demo data volumes the working set is already in the page cache,
+           so these only duplicate it. -->
+      <uncompressed_cache_size>0</uncompressed_cache_size>
+      <index_uncompressed_cache_size>0</index_uncompressed_cache_size>
+      <compiled_expression_cache_size>0</compiled_expression_cache_size>
+      <mmap_cache_size>256</mmap_cache_size>
+
+      <!-- Background pools default to sizes derived from core count (15 here). Each merge
+           thread can hold a buffer, so this is real memory, not just scheduling. -->
+      <background_pool_size>4</background_pool_size>
+      <background_schedule_pool_size>4</background_schedule_pool_size>
+      <background_common_pool_size>4</background_common_pool_size>
+      <background_fetches_pool_size>2</background_fetches_pool_size>
+      <background_move_pool_size>2</background_move_pool_size>
+      <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
+      <max_concurrent_queries>16</max_concurrent_queries>
+      <max_thread_pool_size>1000</max_thread_pool_size>
+
+      <!-- GOTCHA, and the one failure that actually stopped this deploy:
+           ClickHouse runs a startup sanity check asserting
+             number_of_free_entries_in_pool_to_execute_mutation
+               <= background_pool_size * background_merges_mutations_concurrency_ratio
+           Those merge_tree defaults (20 / 8 / 25) are sized against a DEFAULT
+           background_pool_size derived from core count. Shrinking the pool above to 4 makes
+           the right-hand side 8, the assertion fails, and the server exits with BAD_ARGUMENTS
+           before it ever listens. It is a hard exit, not a warning. Anyone tuning ClickHouse
+           pools down has to lower these in the same edit. -->
+      <merge_tree>
+        <number_of_free_entries_in_pool_to_execute_mutation>2</number_of_free_entries_in_pool_to_execute_mutation>
+        <number_of_free_entries_in_pool_to_lower_max_size_of_merge>1</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+        <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>2</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
+        <!-- Caps how large a single merge may get. A merge holds its working set in memory,
+             so this is the other place ClickHouse can blow a small container limit. -->
+        <max_bytes_to_merge_at_max_space_in_pool>1073741824</max_bytes_to_merge_at_max_space_in_pool>
+        <merge_max_block_size>4096</merge_max_block_size>
+      </merge_tree>
+
+      <!-- Self-telemetry. A default ClickHouse writes ~10 system.*_log tables, each with its
+           own in-memory flush buffer and MergeTree parts to merge. On an idle single-node
+           dev instance this is the bulk of both the idle RSS and the disk churn, and none of
+           it is Langfuse data. remove="1" is ClickHouse's config-substitution directive for
+           deleting an inherited element. -->
+      <query_log remove="1"/>
+      <query_thread_log remove="1"/>
+      <query_views_log remove="1"/>
+      <part_log remove="1"/>
+      <trace_log remove="1"/>
+      <metric_log remove="1"/>
+      <asynchronous_metric_log remove="1"/>
+      <session_log remove="1"/>
+      <processors_profile_log remove="1"/>
+      <text_log remove="1"/>
+      <crash_log remove="1"/>
+      <opentelemetry_span_log remove="1"/>
+      <backup_log remove="1"/>
+      <blob_storage_log remove="1"/>
+      <error_log remove="1"/>
+      <latency_log remove="1"/>
+      <query_metric_log remove="1"/>
+
+      <logger>
+        <level>warning</level>
+        <console>1</console>
+      </logger>
+    </clickhouse>
+  # Per-query / per-user caps. max_server_memory_usage above is the process ceiling; this is
+  # what any single Langfuse analytics query may take before it is refused.
+  low-memory-users.xml: |
+    <clickhouse>
+      <profiles>
+        <default>
+          <max_memory_usage>1000000000</max_memory_usage>
+          <max_memory_usage_for_user>1200000000</max_memory_usage_for_user>
+          <max_bytes_before_external_group_by>500000000</max_bytes_before_external_group_by>
+          <max_bytes_before_external_sort>500000000</max_bytes_before_external_sort>
+          <log_queries>0</log_queries>
+        </default>
+      </profiles>
+    </clickhouse>
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: clickhouse-data, namespace: langfuse}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 5Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: langfuse-clickhouse, namespace: langfuse}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: langfuse-clickhouse}}
+  template:
+    metadata:
+      labels: {app: langfuse-clickhouse}
+    spec:
+      securityContext: {fsGroup: 101}
+      containers:
+        - name: clickhouse
+          # 24.8 is a ClickHouse LTS line and is what Langfuse v3 targets. -alpine is a
+          # smaller image; arm64 manifests verified present for this tag.
+          image: clickhouse/clickhouse-server:24.8-alpine
+          env:
+            - {name: CLICKHOUSE_DB, value: "default"}
+            - {name: CLICKHOUSE_USER, value: "clickhouse"}
+            # Langfuse's migrator issues DDL (CREATE TABLE / ALTER) as this user.
+            - {name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT, value: "1"}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: CLICKHOUSE_PASSWORD}}
+          ports:
+            - {containerPort: 8123, name: http}
+            - {containerPort: 9000, name: native}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/clickhouse}
+            - {name: cfg, mountPath: /etc/clickhouse-server/config.d/low-memory.xml, subPath: low-memory.xml}
+            - {name: cfg, mountPath: /etc/clickhouse-server/users.d/low-memory-users.xml, subPath: low-memory-users.xml}
+          readinessProbe:
+            httpGet: {path: /ping, port: 8123}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /ping, port: 8123}
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests: {cpu: "200m", memory: "512Mi"}
+            limits: {cpu: "3", memory: "2Gi"}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: clickhouse-data}
+        - name: cfg
+          configMap: {name: clickhouse-low-memory}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: langfuse-clickhouse, namespace: langfuse}
+spec:
+  selector: {app: langfuse-clickhouse}
+  ports:
+    - {name: http, port: 8123, targetPort: 8123}
+    - {name: native, port: 9000, targetPort: 9000}
+---
+# ---------------------------------------------------------------------------------------
+# Postgres — transactional store (users, projects, API keys, prompts). Small by nature.
+# ---------------------------------------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: postgres-data, namespace: langfuse}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 2Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: langfuse-postgres, namespace: langfuse}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: langfuse-postgres}}
+  template:
+    metadata:
+      labels: {app: langfuse-postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          # Postgres derives nothing from the cgroup either; these are the same class of fix
+          # as the ClickHouse cache pins, just much cheaper to get right.
+          args:
+            - "-c"
+            - "shared_buffers=128MB"
+            - "-c"
+            - "max_connections=100"
+            - "-c"
+            - "work_mem=4MB"
+          env:
+            - {name: POSTGRES_USER, value: "langfuse"}
+            - {name: POSTGRES_DB, value: "langfuse"}
+            - {name: PGDATA, value: "/var/lib/postgresql/data/pgdata"}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: POSTGRES_PASSWORD}}
+          ports: [{containerPort: 5432, name: pg}]
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "langfuse", "-d", "langfuse"]}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: {cpu: "50m", memory: "128Mi"}
+            limits: {cpu: "1", memory: "512Mi"}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: postgres-data}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: langfuse-postgres, namespace: langfuse}
+spec:
+  selector: {app: langfuse-postgres}
+  ports: [{name: pg, port: 5432, targetPort: 5432}]
+---
+# ---------------------------------------------------------------------------------------
+# Redis — BullMQ queue + API-key cache.
+# ---------------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: langfuse-redis, namespace: langfuse}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: langfuse-redis}}
+  template:
+    metadata:
+      labels: {app: langfuse-redis}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          # maxmemory-policy MUST be noeviction. Langfuse runs its ingestion queue through
+          # BullMQ; under any eviction policy Redis is free to drop queue keys, which
+          # silently loses spans rather than failing loudly. Upstream's own compose file
+          # sets the same flag.
+          args:
+            - "redis-server"
+            - "--requirepass"
+            - "$(REDIS_AUTH)"
+            - "--maxmemory"
+            - "192mb"
+            - "--maxmemory-policy"
+            - "noeviction"
+            - "--save"
+            - ""
+            - "--appendonly"
+            - "no"
+          env:
+            - name: REDIS_AUTH
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: REDIS_AUTH}}
+          ports: [{containerPort: 6379, name: redis}]
+          readinessProbe:
+            exec: {command: ["sh", "-c", "redis-cli -a \"$REDIS_AUTH\" ping | grep -q PONG"]}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: {cpu: "25m", memory: "64Mi"}
+            limits: {cpu: "500m", memory: "256Mi"}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: langfuse-redis, namespace: langfuse}
+spec:
+  selector: {app: langfuse-redis}
+  ports: [{name: redis, port: 6379, targetPort: 6379}]
+---
+# ---------------------------------------------------------------------------------------
+# MinIO — blob store for raw ingestion events.
+#
+# Not optional. Langfuse writes every incoming event to S3 before the worker processes it,
+# and LANGFUSE_S3_EVENT_UPLOAD_* has no ENABLED flag (unlike media upload and batch export,
+# both disabled below). It is the ingestion path, not a feature. It is also the cheapest of
+# the six containers to run.
+# ---------------------------------------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: minio-data, namespace: langfuse}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 5Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: langfuse-minio, namespace: langfuse}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: langfuse-minio}}
+  template:
+    metadata:
+      labels: {app: langfuse-minio}
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+          # Creating the bucket as a directory before the server starts is upstream's own
+          # trick — it avoids needing a separate mc job just to mkbucket.
+          command: ["/bin/sh", "-c"]
+          args:
+            # --memlimit is required, not cosmetic: MinIO sizes its internal buffers from
+            # HOST memory (same failure mode as ClickHouse and Node), and was measured at
+            # 295 MiB idle against a 512Mi limit before this flag was added.
+            - "mkdir -p /data/langfuse && exec minio server /data --address :9000 --console-address :9001 --memlimit 320MiB"
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: MINIO_ROOT_USER}}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom: {secretKeyRef: {name: langfuse-secrets, key: MINIO_ROOT_PASSWORD}}
+          ports:
+            - {containerPort: 9000, name: s3}
+            - {containerPort: 9001, name: console}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+          readinessProbe:
+            httpGet: {path: /minio/health/ready, port: 9000}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: {cpu: "50m", memory: "128Mi"}
+            limits: {cpu: "1", memory: "512Mi"}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: minio-data}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: langfuse-minio, namespace: langfuse}
+spec:
+  selector: {app: langfuse-minio}
+  ports:
+    - {name: s3, port: 9000, targetPort: 9000}
+    - {name: console, port: 9001, targetPort: 9001}

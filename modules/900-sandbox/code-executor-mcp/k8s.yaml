@@ -1,0 +1,151 @@
+# code-executor MCP broker: vends gVisor sandboxes to run untrusted, model-written code.
+#
+# Local port of the workshop's 900 code-executor-mcp/k8s.yaml. Two substitutions:
+#   * the workshop's EKS Pod Identity for read-only DynamoDB Query becomes an initContainer
+#     that seeds SQLite into an emptyDir — same shape as the 500 mcp-server. The broker is
+#     still the ONLY thing holding a handle on the orders data; the agent has none and the
+#     sandbox has none.
+#   * imagePullPolicy: Never (k3d side-load; there is no registry).
+#
+# The RBAC is unchanged and is the load-bearing part: the broker creates SandboxClaims via
+# the Kubernetes API, so it needs a Role in ns agent-sandbox where the claims live. That
+# credential lives HERE, in the broker, and explicitly NOT in the sandbox
+# (automountServiceAccountToken: false on the SandboxTemplate).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: code-executor
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-executor-mcp
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-executor
+  template:
+    metadata:
+      labels:
+        app: code-executor
+    spec:
+      serviceAccountName: code-executor
+      initContainers:
+        - name: seed-orders
+          image: code-executor-mcp:local
+          imagePullPolicy: Never
+          command: ["python", "/seed/seed-orders.py"]
+          env:
+            - {name: ORDERS_JSON, value: /seed/orders.json}
+            - {name: ORDERS_DB, value: /data/orders.db}
+          volumeMounts:
+            - {name: orders, mountPath: /data}
+      containers:
+        - name: code-executor-mcp
+          image: code-executor-mcp:local
+          imagePullPolicy: Never
+          env:
+            - {name: ORDERS_DB, value: /data/orders.db}
+            # SANDBOX_* all have defaults in sandbox_runner.py; the warm pool name is the
+            # one that changed with the gVisor substitution, so state it explicitly.
+            - {name: SANDBOX_WARMPOOL, value: gvisor-python-pool}
+            - {name: SANDBOX_NAMESPACE, value: agent-sandbox}
+            - name: SANDBOX_ROUTER_URL
+              value: http://sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - {name: orders, mountPath: /data}
+          resources:
+            requests: {cpu: "256m", memory: "256Mi"}
+      volumes:
+        - name: orders
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-executor-mcp
+  namespace: default
+spec:
+  selector:
+    app: code-executor
+  ports:
+    - port: 8080
+      targetPort: 8080
+      # agentgateway speaks MCP to this Service (same as the 500 mcp-server).
+      appProtocol: agentgateway.dev/mcp
+---
+# Broker RBAC: create/delete claims + watch sandboxes, in the sandbox namespace.
+# The SA lives in ns default; a RoleBinding IN ns agent-sandbox grants it these
+# verbs THERE (permissions apply in the binding's namespace).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: code-executor-sandbox
+  namespace: agent-sandbox
+rules:
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["create", "delete", "get", "list", "watch"]
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes/status"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: code-executor-sandbox
+  namespace: agent-sandbox
+subjects:
+  - kind: ServiceAccount
+    name: code-executor
+    namespace: default
+roleRef:
+  kind: Role
+  name: code-executor-sandbox
+  apiGroup: rbac.authorization.k8s.io
+---
+# Expose the broker's MCP through the cluster-internal agentgateway at /code-mcp.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: code-mcp-backend
+  namespace: default
+spec:
+  mcp:
+    targets:
+      - name: code-executor-mcp
+        static:
+          backendRef:
+            name: code-executor-mcp
+          port: 8080
+          protocol: StreamableHTTP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: code-mcp
+  namespace: default
+spec:
+  parentRefs:
+    # NOT "agentgateway" — see modules/500-mcp/mcp-server/k8s.yaml for why the Gateway is
+    # named mcp-gateway in this build.
+    - name: mcp-gateway
+      namespace: agentgateway-system
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /code-mcp
+      backendRefs:
+        - name: code-mcp-backend
+          group: agentgateway.dev
+          kind: AgentgatewayBackend

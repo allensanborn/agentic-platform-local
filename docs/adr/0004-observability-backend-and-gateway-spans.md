@@ -1,9 +1,14 @@
 # ADR 0004 — Observability: Jaeger instead of Langfuse, and the gateway-span gap
 
-**Status:** accepted, with one known gap
+**Status:** superseded in part by ADR 0008 — the Langfuse sizing claim below was wrong
 **Date:** 2026-08-15
 
 ## Backend: Jaeger, not Langfuse
+
+> **Retracted.** The premise of this section — that Langfuse could not fit on this machine —
+> did not survive being tested. Langfuse now runs here in the `langfuse` namespace at ~1.6 GiB
+> idle. See ADR 0008 and `platform/observability/langfuse/README.md`. The original reasoning
+> is kept below because the way it failed is instructive.
 
 The workshop uses Langfuse. Self-hosted Langfuse (v4) is **six containers** — web, worker,
 ClickHouse, MinIO, Redis, Postgres — with official sizing guidance of 4 cores / 16 GiB. There
@@ -23,6 +28,15 @@ block in `platform/observability/otel-collector.yaml` and nothing else — which
 point of putting a collector in the middle.
 
 Langfuse remains worth running on a 64 GB machine, where it fits.
+
+**Two errors, of different kinds.** The 11.7 GiB was a misread: this machine runs OrbStack,
+not Docker Desktop, and that figure is a configurable soft cap over dynamically allocated
+memory, not a fixed VM ceiling. And 16 GiB was treated as a requirement when it is a
+production sizing recommendation. The second error is the one worth carrying forward — a
+vendor's recommended sizing describes their expected load, not the software's floor, and the
+gap between the two was roughly a factor of eight here.
+
+Jaeger remains the collector's live export target, now by preference rather than necessity.
 
 ## What works
 

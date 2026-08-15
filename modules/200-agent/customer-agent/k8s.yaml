@@ -26,8 +26,18 @@ data:
   MODEL_BASE_URL: "http://ai-gateway.envoy-gateway-system.svc.cluster.local/v1"
   MODEL_ID: "local-smart"
   MODEL_API_KEY: "not-needed"
+  # Lab 5. run_python's `code` argument is a whole Python program, and qwen3 spends this
+  # budget on reasoning BEFORE it emits the tool call. At the previous fixed 2048 a charting
+  # request reasoned itself out of budget and the turn ended with no tool call and no answer
+  # — silently. See ADR 0007 for the measurements.
+  MODEL_MAX_TOKENS: "6144"
   # Tools are discovered from here at runtime; the agent no longer imports them.
   MCP_SERVER_URL: "http://mcp-gateway.agentgateway-system.svc.cluster.local/mcp"
+  # Lab 5. One agent, two MCP servers: the orders tools and the code-execution broker.
+  # This is the ENTIRE agent-side change for sandboxed code execution — no new image, no new
+  # code path, one comma. agent.py already prefers MCP_SERVER_URLS over MCP_SERVER_URL, and
+  # everything that makes run_python safe lives behind the gateway and inside the broker.
+  MCP_SERVER_URLS: "http://mcp-gateway.agentgateway-system.svc.cluster.local/mcp,http://mcp-gateway.agentgateway-system.svc.cluster.local/code-mcp"
   # Lab 2. The agent speaks plain OTLP to the shared collector and holds no
   # credential for the tracing backend — the collector is the only egress.
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.telemetry.svc.cluster.local:4318"

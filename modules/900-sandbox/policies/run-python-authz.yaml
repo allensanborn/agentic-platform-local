@@ -1,0 +1,30 @@
+# Authorize run_python for the sales-analyst persona only.
+#
+# Local port of the workshop's 900 policies/run-python-authz.yaml. One string changed:
+# the workshop reads jwt["cognito:groups"], this reads jwt["groups"] — the same single
+# substitution lab 4 made (modules/700-authz/policies/step3-differentiate.yaml).
+#
+# JWT authentication is enforced gateway-wide by lab 4's mcp-authn policy on the
+# mcp-gateway Gateway; this policy only targets the code-exec backend and checks a claim.
+# Lab 4 must be applied first, or there is no `jwt` for the rule to read.
+#
+# Note the asymmetry with lab 4's persona split: support-associate gets the write-ish tool
+# (initiate_return), sales-analyst gets the compute tool. Neither is a superset of the other,
+# which is what makes the deny-by-default posture visible rather than decorative.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: code-mcp-tool-authz
+  namespace: default
+spec:
+  targetRefs:
+    - kind: AgentgatewayBackend
+      name: code-mcp-backend
+      group: agentgateway.dev
+  backend:
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          matchExpressions:
+            - 'mcp.tool.name == "run_python" && "sales-analyst" in jwt["groups"]'

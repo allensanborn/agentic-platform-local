@@ -12,10 +12,10 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 |---|---|---|
 | 0 | Model gateway (Envoy AI Gateway → Ollama), alias table | ✅ **working** |
 | 1 | Strands agent + `lookup_order` tool + SSE + Chainlit UI, all in-cluster | ✅ **working** |
-| 2 | Observability: OTel auto-instrumentation + collector | ✅ **working** (Jaeger not Langfuse; gateway span is a known gap — [ADR 0004](docs/adr/0004-observability-backend-and-gateway-spans.md)) |
+| 2 | Observability: OTel + collector fanning out to **Langfuse and Jaeger** | ✅ **working** (gateway span still a known gap — [ADR 0004](docs/adr/0004-observability-backend-and-gateway-spans.md)) |
 | 3 | MCP tool serving via agentgateway + least privilege | ✅ **working** |
 | 4 | Authorization: Keycloak + deny-by-default per-tool policy | ✅ **working** |
-| 5 | Sandboxed code execution | not started |
+| 5 | Sandboxed code execution | ✅ **working** (gVisor not Firecracker — [ADR 0005](docs/adr/0005-gvisor-not-kata-firecracker.md)) |
 | 6-7 | Autonomous coding agent | not started |
 
 **What actually runs today:** a Strands agent answering order questions against a local SQLite database, reaching its model *through the gateway by alias*, streaming SSE with the workshop's exact wire contract.
@@ -45,6 +45,33 @@ failure modes differ: a bad token is a loud 401, while a valid token without the
 the tool *vanish from `tools/list`* — the model never learns the capability exists, so it
 cannot be talked into trying.
 
+**Lab 5 — the agent writes code and something else runs it:**
+
+```
+$ make sandbox-ask USER_NAME=ana Q="What were total 2026-Q1 sales aggregated by region?"
+
+Tool #1: run_python          # 139 rows fetched by the broker, never through the model
+Central: $17,494.04   East: $16,014.34   South: $25,758.73   West: $34,793.56
+
+$ make sandbox-ask USER_NAME=sam Q="What were total 2026-Q1 sales aggregated by region?"
+
+I don't have access to sales data or reporting capabilities. My current tools only allow
+me to check order status and initiate returns.
+```
+
+`sam` is not refused. `run_python` is simply not in the tool list his token produces, so the
+model has no capability to be talked out of. And the code that *did* run, ran with its own
+kernel, no network, and no Kubernetes credential:
+
+```
+$ make sandbox-airgap
+egress blocked: ConnectionRefusedError
+sa token dir exists: False
+kernel: 4.19.0-gvisor
+=== CONTROL: same probe from a pod the policy does NOT select ===
+CONTROL connected to 1.1.1.1:443 — the policy, not the runtime, is what blocks the sandbox
+```
+
 ```
 $ python agent.py "My order ID is ORD-1001. Where is it?"
 
@@ -56,7 +83,7 @@ Your order ORD-1001 is currently shipped and on its way!
 
 ## The interesting part: how little had to change
 
-`agent.py` and `server.py` are **copied verbatim** from the workshop. Not adapted — copied. They work unmodified against a local model because the workshop already routes every model call through an OpenAI-compatible base URL, and the agent ships with `api_key="not-needed"`.
+`agent.py` and `server.py` were **copied verbatim** from the workshop. Not adapted — copied. (Through lab 4 they stayed that way; lab 5 added exactly one line to `agent.py`, making `max_tokens` an environment variable — see [ADR 0007](docs/adr/0007-tool-call-token-budget.md) for why that turned out to be load-bearing.) They work unmodified against a local model because the workshop already routes every model call through an OpenAI-compatible base URL, and the agent ships with `api_key="not-needed"`.
 
 Exactly two things changed to remove AWS entirely:
 
@@ -78,6 +105,15 @@ make up           # cluster + gateway + build/import images + deploy
 make ui           # port-forward the chat UI, then open http://127.0.0.1:8000
 ```
 
+Lab 5 (sandboxed code execution) is a separate bring-up, because it installs a runtime into
+the k3d node and restarts it:
+
+```bash
+make sandbox          # gVisor + agent-sandbox control plane + images + broker + authz policy
+make sandbox-forward  # in another shell: the port-forwards the verification targets need
+make sandbox-test     # then see modules/900-sandbox/README.md
+```
+
 Diagrams: `make diagrams` (see [docs/architecture](docs/architecture/)).
 
 ## Design decisions
@@ -85,7 +121,20 @@ Diagrams: `make diagrams` (see [docs/architecture](docs/architecture/)).
 - [ADR 0001 — k3s (via k3d), not kind](docs/adr/0001-k3s-not-kind.md) — kindnet silently ignores NetworkPolicy, which would make lab 5's airgap demo *look* like it works while enforcing nothing.
 - [ADR 0002 — Envoy AI Gateway extproc is not wired into the filter chain](docs/adr/0002-ai-gateway-extproc-not-wired.md) — the current lab-0 blocker, with the exact diagnostic.
 - [ADR 0003 — local model reasoning tokens](docs/adr/0003-reasoning-tokens.md) — qwen3 emits reasoning by default; this has real consequences for `max_tokens` and multi-turn.
+- [ADR 0005 — gVisor, not Kata + Firecracker](docs/adr/0005-gvisor-not-kata-firecracker.md) — the one substitution lab 5 forces, and exactly what it costs.
+- [ADR 0006 — install upstream agent-sandbox](docs/adr/0006-upstream-agent-sandbox-control-plane.md) — it runs unmodified on arm64/k3s. Includes a real hole found in the workshop's own air-gap NetworkPolicy.
+- [ADR 0007 — `max_tokens` is a per-tool property](docs/adr/0007-tool-call-token-budget.md) — adding a tool whose argument is a whole program is a change to the model config, and the failure is silent.
 
 ## What this cannot do
 
-Reproducing lab 5 faithfully requires **Kata Containers + Firecracker microVMs**, which need `/dev/kvm`. That is architecturally unavailable on both targets: Windows/WSL2 runs under Hyper-V, which does not support nested non-Hyper-V hypervisors, and Apple Silicon has no KVM path at all. The plan substitutes gVisor via `RuntimeClass` — every manifest, the warm pool, the airgap NetworkPolicy and the whole data-in-as-a-file discipline survive unchanged, but the workshop's claim that *"a process that escapes the container escapes into a VM, not onto the node"* stops being true. That trade is documented rather than papered over.
+Reproducing lab 5 faithfully requires **Kata Containers + Firecracker microVMs**, which need
+`/dev/kvm`. That is architecturally unavailable on both targets: Windows/WSL2 runs under
+Hyper-V, which does not support nested non-Hyper-V hypervisors, and Apple Silicon has no KVM
+path at all. The substitute is gVisor via `RuntimeClass` — every manifest, the warm pool, the
+air-gap NetworkPolicy and the whole data-in-as-a-file discipline survive unchanged, but the
+workshop's claim that *"a process that escapes the container escapes into a VM, not onto the
+node"* stops being true. [ADR 0005](docs/adr/0005-gvisor-not-kata-firecracker.md) has the
+full comparison rather than papering over it.
+
+Everything else in lab 5 is the workshop's own software: the upstream `agent-sandbox`
+controller, CRDs, router and Python SDK, installed unmodified.

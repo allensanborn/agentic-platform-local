@@ -110,3 +110,84 @@ sandbox-verify:  ## prove the sandbox has its own kernel (the workshop's own che
 	@echo "node kernel:    $$(docker exec k3d-agentic-agent-0 uname -r)"
 	@echo "sandbox kernel: $$(kubectl logs gvisor-smoke 2>/dev/null)"
 	@kubectl delete pod gvisor-smoke --ignore-not-found >/dev/null 2>&1 || true
+
+# --- lab 5: sandboxed code execution --------------------------------------------------
+SANDBOX := modules/900-sandbox
+BROKER  := $(SANDBOX)/code-executor-mcp
+
+sandbox-platform: ## install upstream agent-sandbox v0.5.0 + the gVisor template/warmpool
+	./scripts/install-agent-sandbox.sh
+
+sandbox-images:  ## build + side-load the sandbox runtime and the broker
+	docker build -q -t python-runtime-sandbox:local $(SANDBOX)/python-runtime-sandbox
+	docker build -q -t code-executor-mcp:local $(BROKER)
+	k3d image import python-runtime-sandbox:local code-executor-mcp:local -c agentic
+	# The warm pool holds pods pinned to the OLD image id; imagePullPolicy: Never means a
+	# rebuild is invisible until the pool is recycled. Delete and let the controller refill.
+	kubectl delete pod -n agent-sandbox --all --ignore-not-found >/dev/null 2>&1 || true
+
+sandbox-deploy:  ## broker + gateway route + the sales-analyst authz policy
+	kubectl apply -f $(BROKER)/k8s.yaml
+	kubectl apply -f $(SANDBOX)/policies/run-python-authz.yaml
+	kubectl apply -f modules/200-agent/customer-agent/k8s.yaml
+	kubectl rollout status deploy/code-executor-mcp --timeout=240s
+	kubectl rollout restart deploy/customer-agent
+	kubectl rollout status deploy/customer-agent --timeout=240s
+
+sandbox: gvisor sandbox-platform sandbox-images sandbox-deploy  ## lab 5, end to end
+	@echo ""
+	@echo "Lab 5 up. Verify:  make sandbox-test"
+
+sandbox-unit:    ## broker unit tests (no cluster needed)
+	cd $(BROKER) && { test -d .venv || uv venv --python 3.12 .venv -q; } && \
+	  . .venv/bin/activate && \
+	  uv pip install -q -r requirements.txt pytest && python -m pytest -q
+
+sandbox-forward: ## port-forwards the probes need, all in one shell (blocks)
+	@echo "broker :8090   gateway :8081   keycloak :8085   agent :8082"
+	@kubectl port-forward svc/code-executor-mcp 8090:8080 & \
+	 kubectl port-forward -n agentgateway-system svc/mcp-gateway 8081:80 & \
+	 kubectl port-forward -n identity svc/keycloak 8085:8080 & \
+	 kubectl port-forward svc/customer-agent 8082:8080 & \
+	 wait
+
+PROBE = cd $(SANDBOX) && . code-executor-mcp/.venv/bin/activate && python probe.py
+
+sandbox-test:    ## the model-free control: drive run_python over MCP (needs sandbox-forward)
+	@echo "=== broker directly, no gateway ==="
+	@$(PROBE) --url http://127.0.0.1:8090/mcp
+	@echo ""
+	@echo "=== ana (sales-analyst) through agentgateway ==="
+	@$(PROBE) --url http://127.0.0.1:8081/code-mcp --user ana --tools-only
+	@echo "=== sam (support-associate) through agentgateway — run_python must be invisible ==="
+	@$(PROBE) --url http://127.0.0.1:8081/code-mcp --user sam --tools-only
+
+sandbox-airgap:  ## run hostile code IN a claimed sandbox and show the air-gap holding
+	@echo "=== inside a CLAIMED sandbox (not a pooled one — see ADR 0006) ==="
+	@$(PROBE) --url http://127.0.0.1:8090/mcp --escape
+	@echo ""
+	@echo "=== CONTROL: same probe from a pod the policy does NOT select ==="
+	@echo "    (a 'blocked' above proves nothing unless this one connects)"
+	@kubectl delete pod -n agent-sandbox airgap-control --ignore-not-found >/dev/null 2>&1 || true
+	@kubectl run airgap-control -n agent-sandbox --image=python-runtime-sandbox:local \
+	  --restart=Never --overrides='{"spec":{"runtimeClassName":"gvisor","containers":[{"name":"c","image":"python-runtime-sandbox:local","imagePullPolicy":"Never","command":["sleep","300"]}]}}' >/dev/null
+	@kubectl wait --for=condition=Ready pod/airgap-control -n agent-sandbox --timeout=120s >/dev/null
+	@kubectl exec -n agent-sandbox airgap-control -- python3 -c "\
+import socket; s=socket.socket(); s.settimeout(5); s.connect(('1.1.1.1',443)); \
+print('CONTROL connected to 1.1.1.1:443 — the policy, not the runtime, is what blocks the sandbox')"
+	@kubectl delete pod -n agent-sandbox airgap-control --wait=false >/dev/null 2>&1 || true
+
+sandbox-pool:    ## show the warm pool, any live claim, and the labels that drive the policy
+	kubectl get sandboxtemplate,sandboxwarmpool,sandboxclaim -n agent-sandbox
+	kubectl get pod -n agent-sandbox --show-labels
+	kubectl get networkpolicy -n agent-sandbox
+
+sandbox-lifecycle: ## hold a sandbox open 40s and show claim -> run -> destroy -> refill
+	@$(PROBE) --url http://127.0.0.1:8090/mcp --sleep 40 >/tmp/sandbox-lifecycle.log 2>&1 & \
+	 sleep 15; echo "=== DURING ==="; kubectl get sandboxclaim -n agent-sandbox; \
+	 kubectl get pod -n agent-sandbox --show-labels; \
+	 sleep 45; echo ""; echo "=== AFTER ==="; kubectl get sandboxclaim -n agent-sandbox; \
+	 kubectl get pod -n agent-sandbox --show-labels; tail -6 /tmp/sandbox-lifecycle.log
+
+sandbox-ask:     ## end-to-end through the model: make sandbox-ask USER=ana Q="..."
+	@$(SANDBOX)/ask.sh $(or $(USER_NAME),ana) "$(or $(Q),What were total 2026-Q1 sales aggregated by region?)"
