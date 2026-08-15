@@ -1,0 +1,88 @@
+# Lab 0 — the AI Gateway, local port.
+#
+# Workshop original: platform/manifests/envoy-ai-gateway-bedrock.yaml, where an
+# AIGatewayRoute fronts Amazon Bedrock and the gateway signs each request with
+# SigV4 via EKS Pod Identity.
+#
+# Local version: the same AIGatewayRoute fronting Ollama on the host. The SigV4
+# hop simply disappears — there is no cloud credential to hold, so the property
+# the workshop works hard for ("the agent holds no model credential") is true
+# here for free.
+#
+# The point being demonstrated is the ALIAS TABLE. The agent asks for
+# `local-fast`; the gateway rewrites that to a real backend model name via
+# modelNameOverride. Swapping the model underneath an agent is a change to THIS
+# file and nothing else — the agent image, code and config stay untouched.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-ai-gateway
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+# Ollama runs on the macOS host, outside the k3d cluster, because that is where
+# the GPU is. k3d injects `host.k3d.internal` into CoreDNS for exactly this.
+# On the Windows/RTX-3070 target the same indirection points at the WSL2 host.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: ollama
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: host.k3d.internal
+        port: 11434
+---
+# schema.name: OpenAI is the load-bearing field — it says "this backend speaks
+# the OpenAI wire format", which is what makes any local engine (Ollama,
+# llama.cpp's llama-server, vLLM) a legal backend here. It is the same field the
+# workshop sets to AWSBedrock.
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: ollama
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: ollama
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: local
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    # THE ALIAS TABLE. Client-facing name on the left, real model on the right.
+    # Workshop equivalent:
+    #   claude-sonnet -> us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: local-fast
+      backendRefs:
+        - name: ollama
+          modelNameOverride: qwen3:8b
