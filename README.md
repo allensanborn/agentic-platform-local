@@ -11,7 +11,7 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 | Lab | Component | Status |
 |---|---|---|
 | 0 | Model gateway (Envoy AI Gateway → Ollama), alias table | ✅ **working** |
-| 1 | Strands agent + `lookup_order` tool + SSE | ✅ **working** |
+| 1 | Strands agent + `lookup_order` tool + SSE + Chainlit UI, all in-cluster | ✅ **working** |
 | 2 | Observability (Langfuse / OTel) | not started |
 | 3 | MCP tool serving | not started |
 | 4 | Authorization (Keycloak + AgentgatewayPolicy) | not started |
@@ -58,12 +58,13 @@ The dataset is the workshop's own 500 orders, converted out of DynamoDB's typed 
 Prerequisites: Docker, `k3d`, `ollama`, `uv`, Python 3.12.
 
 ```bash
-make seed        # build data/orders.db from the workshop dataset
-make model       # ollama pull qwen3:8b (~5GB)
-make agent       # run the agent against Ollama directly
-make serve       # FastAPI + SSE on :8081
-make cluster     # k3d cluster + Envoy AI Gateway (lab 0 — see ADR 0002)
+make model        # ollama pull qwen3:8b (~5GB) — one time
+make serve-model  # Ollama bound to 0.0.0.0 so the cluster can reach it
+make up           # cluster + gateway + build/import images + deploy
+make ui           # port-forward the chat UI, then open http://127.0.0.1:8000
 ```
+
+Diagrams: `make diagrams` (see [docs/architecture](docs/architecture/)).
 
 ## Design decisions
 

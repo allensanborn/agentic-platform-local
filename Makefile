@@ -71,3 +71,29 @@ diagrams:        ## validate workspace.dsl and render PNG/SVG + Mermaid into doc
 diagrams-lint:   ## structurizr model lint
 	docker run --rm -v "$(CURDIR)/$(DIAG):/work" -w /work structurizr/structurizr \
 	  inspect -workspace workspace.dsl
+
+# --- one-command bring-up ------------------------------------------------------------
+IMAGES := customer-agent chat-ui
+
+images:          ## build both app images and side-load them into k3d
+	docker build -q -t customer-agent:local modules/200-agent/customer-agent
+	docker build -q -t chat-ui:local modules/300-ui/chat-ui
+	k3d image import customer-agent:local chat-ui:local -c agentic
+
+deploy:          ## apply the app manifests
+	kubectl apply -f modules/200-agent/customer-agent/k8s.yaml
+	kubectl apply -f modules/300-ui/chat-ui/k8s.yaml
+	kubectl rollout status deploy/customer-agent --timeout=180s
+	kubectl rollout status deploy/chat-ui --timeout=180s
+
+up: cluster images deploy  ## cluster + gateway + images + deploy, end to end
+	@echo ""
+	@echo "Ready. Start the model and open the UI:"
+	@echo "  make serve-model     # in another shell, if ollama isn't already running"
+	@echo "  make ui              # then open http://127.0.0.1:8000"
+
+ui:              ## port-forward the chat UI to :8000
+	kubectl port-forward svc/chat-ui 8000:8000
+
+down:            ## delete the cluster
+	k3d cluster delete agentic

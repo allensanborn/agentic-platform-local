@@ -1,0 +1,48 @@
+# Lab 1 — the chat UI.
+#
+# Talks to the agent over its ClusterIP Service. No auth: the workshop's Cognito
+# gate exists to feed lab 4's per-tool authorization, and there is nothing to
+# authorize until tools move behind agentgateway in lab 3.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-ui
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chat-ui
+  template:
+    metadata:
+      labels:
+        app: chat-ui
+    spec:
+      containers:
+        - name: chat-ui
+          image: chat-ui:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_URL
+              value: http://customer-agent.default.svc.cluster.local:8080/chat
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-ui
+  namespace: default
+spec:
+  selector:
+    app: chat-ui
+  ports:
+    - port: 8000
+      targetPort: 8000
