@@ -1,0 +1,18 @@
+# Envoy Gateway's telemetry backendRef points from namespace `default` (the EnvoyProxy)
+# into `telemetry` (the collector). Gateway API requires the TARGET namespace to consent to
+# that cross-namespace reference explicitly — a deny-by-default posture worth noticing: the
+# same principle lab 4 applies to tool calls, applied here to telemetry egress.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-gateway-telemetry
+  namespace: telemetry
+spec:
+  from:
+    - group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      namespace: default
+  to:
+    - group: ""
+      kind: Service
+      name: otel-collector

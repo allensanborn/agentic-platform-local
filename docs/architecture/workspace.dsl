@@ -43,6 +43,14 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                 tags "Model"
             }
 
+            collector = container "OTel Collector" "LAB 2 control point. Every workload speaks plain OTLP here and holds NO credential for the tracing backend — one key to rotate. Also where telemetry is SHAPED: a filter rule drops the per-SSE-chunk spans that took one trace from 543 spans to 9." "OpenTelemetry Collector (workshop: same)" {
+                tags "ControlPoint"
+            }
+
+            tracing = container "Trace Backend" "Renders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes." "Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)" {
+                tags "Observability"
+            }
+
             orders = container "Orders Store" "500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." "SQLite (workshop: Amazon DynamoDB)" {
                 tags "Data"
             }
@@ -57,6 +65,12 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
         agent -> orders   "lookup_order(order_id)" "SQLite read"
 
         gateway -> ollama    "Rewrites alias -> qwen3:8b, forwards" "HTTP, OpenAI wire format"
+
+        agent     -> collector "Spans, zero tracing code — opentelemetry-instrument patches httpx + FastAPI" "OTLP/HTTP"
+        gateway   -> collector "Spans (configured; not yet landing — see ADR 0004)" "OTLP/gRPC" {
+            tags "Broken"
+        }
+        collector -> tracing   "The single authenticated egress" "OTLP/gRPC"
         gateway -> anthropic "Same hop, different backend — a config change, not a code change" "HTTPS, Anthropic wire format" {
             tags "Optional"
         }
@@ -75,6 +89,10 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                             deploymentNode "Envoy data plane" "Service pinned to the name 'ai-gateway' so MODEL_BASE_URL is stable" {
                                 containerInstance gateway
                             }
+                        }
+                        deploymentNode "namespace: telemetry" {
+                            containerInstance collector
+                            containerInstance tracing
                         }
                         deploymentNode "namespace: default" {
                             deploymentNode "Deployment: customer-agent" "initContainer seeds the orders DB into an emptyDir the agent mounts" {
@@ -144,12 +162,20 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                 background #c0392b
                 color #ffffff
             }
+            element "Observability" {
+                background #00695c
+                color #ffffff
+            }
             element "External" {
                 background #999999
                 color #ffffff
             }
             element "Optional" {
                 opacity 60
+            }
+            relationship "Broken" {
+                style dotted
+                color #b00020
             }
             relationship "Optional" {
                 style dashed

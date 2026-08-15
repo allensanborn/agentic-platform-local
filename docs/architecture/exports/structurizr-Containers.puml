@@ -60,6 +60,18 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 450;
   }
+  // Element,Container,Observability
+  .Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ== {
+    BackgroundColor: #00695c;
+    LineColor: #004940;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
   // Element,Container,UI
   .Element-RWxlbWVudCxDb250YWluZXIsVUk= {
     BackgroundColor: #438dd5;
@@ -105,6 +117,15 @@ hide stereotype
     FontSize: 24;
     MaximumWidth: 200;
   }
+  // Relationship,Broken
+  .Relationship-UmVsYXRpb25zaGlwLEJyb2tlbg== {
+    LineThickness: 2;
+    LineStyle: 2-2;
+    LineColor: #b00020;
+    FontColor: #b00020;
+    FontSize: 24;
+    MaximumWidth: 200;
+  }
   // Relationship,Optional
   .Relationship-UmVsYXRpb25zaGlwLE9wdGlvbmFs {
     LineThickness: 2;
@@ -132,11 +153,13 @@ person "==Platform Operator\n<size:16>[Person]</size>\n\nRuns the cluster and ow
 rectangle "==Anthropic API\n<size:16>[Software System]</size>\n\nFrontier model, used only where a local model is not good enough (labs 6-7)." <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWwsT3B0aW9uYWw=>> as AnthropicAPI
 
 rectangle "Agentic Platform (local)\n<size:16>[Software System]</size>" <<Boundary-QWdlbnRpYyBQbGF0Zm9ybSAobG9jYWwp>> {
+  rectangle "==Trace Backend\n<size:16>[Container: Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)]</size>\n\nRenders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes." <<Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ==>> as AgenticPlatformlocal.TraceBackend
+  database "==Orders Store\n<size:16>[Container: SQLite (workshop: Amazon DynamoDB)]</size>\n\n500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>> as AgenticPlatformlocal.OrdersStore
   rectangle "==Chat UI\n<size:16>[Container: Chainlit (workshop: same)]</size>\n\nStreams the agent's answer and renders tool calls as steps." <<Element-RWxlbWVudCxDb250YWluZXIsVUk=>> as AgenticPlatformlocal.ChatUI
   rectangle "==Customer Agent\n<size:16>[Container: Python, Strands Agents SDK, FastAPI]</size>\n\nAgent loop: picks tools, calls the model, streams SSE. agent.py/server.py run VERBATIM from the workshop." <<Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ=>> as AgenticPlatformlocal.CustomerAgent
   hexagon "==AI Gateway\n<size:16>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</size>\n\nLAB 0 control point. Owns WHICH model answers: agents ask for an alias, the gateway rewrites it to a real model. Also the only thing that would hold a model credential." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.AIGateway
   rectangle "==Local Model Runtime\n<size:16>[Container: Ollama (workshop: Amazon Bedrock)]</size>\n\nServes qwen3:8b and llama3.2:1b over an OpenAI-compatible API. Runs on the HOST, not in the cluster, because that is where the GPU is." <<Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw=>> as AgenticPlatformlocal.LocalModelRuntime
-  database "==Orders Store\n<size:16>[Container: SQLite (workshop: Amazon DynamoDB)]</size>\n\n500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>> as AgenticPlatformlocal.OrdersStore
+  hexagon "==OTel Collector\n<size:16>[Container: OpenTelemetry Collector (workshop: same)]</size>\n\nLAB 2 control point. Every workload speaks plain OTLP here and holds NO credential for the tracing backend — one key to rotate. Also where telemetry is SHAPED: a filter rule drops the per-SSE-chunk spans that took one trace from 543 spans to 9." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.OTelCollector
 }
 
 Shopper --> AgenticPlatformlocal.ChatUI <<Relationship-UmVsYXRpb25zaGlw>> : "Asks about an order"
@@ -145,6 +168,9 @@ AgenticPlatformlocal.ChatUI --> AgenticPlatformlocal.CustomerAgent <<Relationshi
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.AIGateway <<Relationship-UmVsYXRpb25zaGlw>> : "Chat completions, asking for the ALIAS 'local-smart'\n<size:16>[HTTP, OpenAI wire format]</size>"
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.OrdersStore <<Relationship-UmVsYXRpb25zaGlw>> : "lookup_order(order_id)\n<size:16>[SQLite read]</size>"
 AgenticPlatformlocal.AIGateway --> AgenticPlatformlocal.LocalModelRuntime <<Relationship-UmVsYXRpb25zaGlw>> : "Rewrites alias -> qwen3:8b, forwards\n<size:16>[HTTP, OpenAI wire format]</size>"
+AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.OTelCollector <<Relationship-UmVsYXRpb25zaGlw>> : "Spans, zero tracing code — opentelemetry-instrument patches httpx + FastAPI\n<size:16>[OTLP/HTTP]</size>"
+AgenticPlatformlocal.AIGateway --> AgenticPlatformlocal.OTelCollector <<Relationship-UmVsYXRpb25zaGlwLEJyb2tlbg==>> : "Spans (configured; not yet landing — see ADR 0004)\n<size:16>[OTLP/gRPC]</size>"
+AgenticPlatformlocal.OTelCollector --> AgenticPlatformlocal.TraceBackend <<Relationship-UmVsYXRpb25zaGlw>> : "The single authenticated egress\n<size:16>[OTLP/gRPC]</size>"
 AgenticPlatformlocal.AIGateway --> AnthropicAPI <<Relationship-UmVsYXRpb25zaGlwLE9wdGlvbmFs>> : "Same hop, different backend — a config change, not a code change\n<size:16>[HTTPS, Anthropic wire format]</size>"
 
 @enduml

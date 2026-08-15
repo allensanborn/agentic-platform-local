@@ -43,6 +43,21 @@ spec:
         container:
           # Clear the large default requests so this fits comfortably on a laptop.
           resources: {}
+  # LAB 2. Make the gateway a participant in the trace, not just a proxy. The agent's
+  # auto-instrumented httpx already sends W3C traceparent on the outbound call; with this
+  # the gateway CONTINUES that trace instead of starting a disconnected one, so one chat
+  # turn is a single tree spanning two services. That cross-service nesting is the whole
+  # point of lab 2 — without it you have two unrelated traces and no way to attribute
+  # latency to the model hop.
+  telemetry:
+    tracing:
+      samplingRate: 100
+      provider:
+        backendRefs:
+          - name: otel-collector
+            namespace: telemetry
+            port: 4317
+        type: OpenTelemetry
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway

@@ -27,6 +27,12 @@ data:
   MODEL_ID: "local-smart"
   MODEL_API_KEY: "not-needed"
   ORDERS_DB: "/data/orders.db"
+  # Lab 2. The agent speaks plain OTLP to the shared collector and holds no
+  # credential for the tracing backend — the collector is the only egress.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.telemetry.svc.cluster.local:4318"
+  OTEL_SERVICE_NAME: "customer-agent"
+  OTEL_LOGS_EXPORTER: "none"
+  OTEL_METRICS_EXPORTER: "none"
 ---
 apiVersion: apps/v1
 kind: Deployment

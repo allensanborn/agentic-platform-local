@@ -1,3 +1,15 @@
-strands-agents[openai]
+strands-agents[openai,otel]
 fastapi
 uvicorn
+# OpenTelemetry zero-code instrumentation. The `opentelemetry-instrument` launcher (see the
+# Dockerfile CMD) patches httpx to propagate W3C traceparent on the outbound LLM call, which
+# is what makes the gateway's span nest under this agent's trace rather than starting a
+# disconnected one. That nesting IS lab 2.
+#
+# opentelemetry-distro sets OTEL_TRACES_EXPORTER=otlp but bundles NO OTLP exporter (console
+# only), so the HTTP exporter must be installed explicitly or the launcher crashes with
+# "otlp_proto_grpc not found". Paired with OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf below.
+opentelemetry-distro
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-instrumentation-httpx
+opentelemetry-instrumentation-fastapi
