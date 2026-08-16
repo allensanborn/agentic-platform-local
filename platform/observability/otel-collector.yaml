@@ -5,16 +5,19 @@
 # rotate; no workload ever sees it. That property is the lesson, and it is independent of
 # which backend sits behind the collector.
 #
-# Backend (see ADR 0004): the workshop uses Langfuse, and Jaeger is what this collector
-# currently exports to. The original reason for the substitution — that Langfuse could not
-# fit on this machine — was WRONG and has been retracted. Langfuse now runs here in the
-# `langfuse` namespace at ~1.6 GiB steady state; see platform/observability/langfuse/.
+# Backend (see ADR 0004 and 0008): the workshop uses Langfuse, and so does this. The earlier
+# substitution — that Langfuse could not fit on this machine — was WRONG and is retracted.
+# Langfuse runs here in the `langfuse` namespace at ~1.6 GiB steady state, an order of
+# magnitude under the production sizing guidance I mistook for a requirement.
 #
-# This pipeline now FANS OUT to both. An OTLP pipeline exports to every backend it names, so
-# Jaeger and Langfuse receive identical spans — Jaeger for raw span plumbing, Langfuse for the
-# LLM-specific view (prompt/completion rendering, token cost). Keeping both is not indecision:
-# it demonstrates the collector-as-control-point argument better than either alone, because
-# adding a second observability backend cost one exporter block and touched no workload.
+# Langfuse is the only trace backend. Jaeger lived here only because I wrongly concluded
+# Langfuse could not fit on this machine (retracted — see ADR 0004 and 0008); once Langfuse
+# was measured at ~1.6 GiB the second backend was redundant, and running two of anything you
+# do not need is how a demo stops being legible.
+#
+# Removing it cost exactly one exporter block and one pipeline entry, and touched no workload
+# — which is the same collector-as-control-point argument the fan-out made, just in reverse.
+# Adding Jaeger back for raw span-tree debugging is the same one-block change.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -50,21 +53,15 @@ data:
             - 'name == "POST /chat http receive"'
             - 'IsMatch(name, "GET /healthz.*")'
     exporters:
-      # The single egress. Swap this block for Langfuse's OTLP endpoint (plus its
-      # Authorization header) and nothing about the workloads changes.
-      otlp/jaeger:
-        endpoint: jaeger.telemetry.svc.cluster.local:4317
-        tls:
-          insecure: true
 
       # --- Langfuse: deployed and verified, not currently wired ------------------------
       # To use it, uncomment this exporter and add it to the traces pipeline below. Keep
-      # Jaeger in the list: an OTLP pipeline fans out to every exporter it names, so both
+      # Three traps worth keeping, learned the hard way:
       # backends receive identical spans and can be compared side by side.
       #
       # Three details that are easy to get wrong, all of them found the hard way:
       #   1. otlphttp, NOT otlp. Langfuse exposes OTLP over HTTP only — there is no gRPC
-      #      listener — so the `otlp/` exporter form used for Jaeger above cannot reach it.
+      #      listener — so the plain `otlp/` exporter form (gRPC) cannot reach it.
       #   2. `traces_endpoint` (a full URL including the path), not `endpoint`. With
       #      `endpoint` the collector appends its own /v1/traces, which 404s against
       #      Langfuse's /api/public/otel base path.
@@ -92,8 +89,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [filter/drop_sse_chunk_spans, batch]
-          # Fan out to both backends with:
-          exporters: [otlp/jaeger, otlphttp/langfuse, debug]
+          exporters: [otlphttp/langfuse, debug]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -141,46 +137,4 @@ spec:
     # internal.upstream_rq_5xx + upstream_cx_destroy_local_with_active_rq, and the collector
     # logs NOTHING because it never sees a valid gRPC stream. See ADR 0004.
     - {name: otlp-grpc, port: 4317, targetPort: 4317, appProtocol: grpc}
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: jaeger
-  namespace: telemetry
-spec:
-  replicas: 1
-  selector:
-    matchLabels: {app: jaeger}
-  template:
-    metadata:
-      labels: {app: jaeger}
-    spec:
-      containers:
-        - name: jaeger
-          image: jaegertracing/all-in-one:1.65.0
-          env:
-            - {name: COLLECTOR_OTLP_ENABLED, value: "true"}
-          ports:
-            - {containerPort: 16686, name: ui}
-            - {containerPort: 4317, name: otlp-grpc}
-          resources:
-            requests: {cpu: "100m", memory: "256Mi"}
-            limits: {cpu: "1", memory: "768Mi"}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: jaeger
-  namespace: telemetry
-spec:
-  selector: {app: jaeger}
-  ports:
-    - {name: ui, port: 16686, targetPort: 16686}
-    # appProtocol: grpc is load-bearing, not documentation. Envoy Gateway infers the
-    # upstream protocol from it; without it the generated `tracing` cluster carries NO
-    # http2_protocol_options, so Envoy speaks gRPC over HTTP/1.1 and the collector's gRPC
-    # receiver rejects the stream. Symptom set: tracing.opentelemetry.spans_sent increments,
-    # spans_dropped stays 0, the endpoint reports HEALTHY, cluster.tracing shows
-    # internal.upstream_rq_5xx + upstream_cx_destroy_local_with_active_rq, and the collector
-    # logs NOTHING because it never sees a valid gRPC stream. See ADR 0004.
-    - {name: otlp-grpc, port: 4317, targetPort: 4317, appProtocol: grpc}
+

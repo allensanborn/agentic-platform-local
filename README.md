@@ -12,7 +12,7 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 |---|---|---|
 | 0 | Model gateway (Envoy AI Gateway → Ollama), alias table | ✅ **working** |
 | 1 | Strands agent + `lookup_order` tool + SSE + Chainlit UI, all in-cluster | ✅ **working** |
-| 2 | Observability: OTel + collector fanning out to **Langfuse and Jaeger** | ✅ **working**; gateway spans now land (transport bug fixed), trace-joining still open — [ADR 0004](docs/adr/0004-observability-backend-and-gateway-spans.md) |
+| 2 | Observability: OTel + collector → **Langfuse** | ✅ **working**; gateway spans now land (transport bug fixed), trace-joining still open — [ADR 0004](docs/adr/0004-observability-backend-and-gateway-spans.md) |
 | 3 | MCP tool serving via agentgateway + least privilege | ✅ **working** |
 | 4 | Authorization: Keycloak + deny-by-default per-tool policy | ✅ **working** |
 | 5 | Sandboxed code execution | ✅ **working** (gVisor not Firecracker — [ADR 0005](docs/adr/0005-gvisor-not-kata-firecracker.md)) |

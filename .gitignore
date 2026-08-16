@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 data/orders.db
 .DS_Store
+
+# Local model-provider credentials. NEVER commit these.
+.secrets/
+*.key
