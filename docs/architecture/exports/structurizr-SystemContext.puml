@@ -36,8 +36,8 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 450;
   }
-  // Element,Software System,External,Optional
-  .Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWwsT3B0aW9uYWw= {
+  // Element,Software System,External
+  .Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWw= {
     BackgroundColor: #999999;
     LineColor: #6b6b6b;
     LineStyle: 0;
@@ -57,24 +57,15 @@ hide stereotype
     FontSize: 24;
     MaximumWidth: 200;
   }
-  // Relationship,Optional
-  .Relationship-UmVsYXRpb25zaGlwLE9wdGlvbmFs {
-    LineThickness: 2;
-    LineStyle: 10-10;
-    LineColor: #444444;
-    FontColor: #444444;
-    FontSize: 24;
-    MaximumWidth: 200;
-  }
 </style>
 
 person "==Shopper\n<size:16>[Person]</size>\n\nAsks about their order in natural language." <<Element-RWxlbWVudCxQZXJzb24=>> as Shopper
 person "==Platform Operator\n<size:16>[Person]</size>\n\nRuns the cluster and owns the control points." <<Element-RWxlbWVudCxQZXJzb24=>> as PlatformOperator
-rectangle "==Anthropic API\n<size:16>[Software System]</size>\n\nFrontier model, used only where a local model is not good enough (labs 6-7)." <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWwsT3B0aW9uYWw=>> as AnthropicAPI
+rectangle "==OpenRouter\n<size:16>[Software System]</size>\n\nFree-tier frontier-class models. Reached ONLY by the gateway, over direct TLS with certificate verification — there is no cleartext hop and no sandbox ever talks to it." <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWw=>> as OpenRouter
 rectangle "==Agentic Platform (local)\n<size:16>[Software System]</size>\n\nCustomer-service agent and the infrastructure that governs it." <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0=>> as AgenticPlatformlocal
 
 Shopper --> AgenticPlatformlocal <<Relationship-UmVsYXRpb25zaGlw>> : "Asks about an order"
 PlatformOperator --> AgenticPlatformlocal <<Relationship-UmVsYXRpb25zaGlw>> : "Changes the model alias table (no agent redeploy)"
-AgenticPlatformlocal --> AnthropicAPI <<Relationship-UmVsYXRpb25zaGlwLE9wdGlvbmFs>> : "Same hop, different backend — a config change, not a code change\n<size:16>[HTTPS, Anthropic wire format]</size>"
+AgenticPlatformlocal --> OpenRouter <<Relationship-UmVsYXRpb25zaGlw>> : "Same hop, different backend — a config change, not a code change. Direct TLS, system trust store, via BackendTLSPolicy\n<size:16>[HTTPS]</size>"
 
 @enduml

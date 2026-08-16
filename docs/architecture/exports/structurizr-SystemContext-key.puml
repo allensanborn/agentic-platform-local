@@ -32,8 +32,8 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 200;
   }
-  // Element,Software System,External,Optional
-  .Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWwsT3B0aW9uYWw= {
+  // Element,Software System,External
+  .Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWw= {
     BackgroundColor: #999999;
     LineColor: #6b6b6b;
     LineStyle: 0;
@@ -53,15 +53,6 @@ hide stereotype
     FontSize: 24;
     MaximumWidth: 200;
   }
-  // Relationship,Optional
-  .Relationship-UmVsYXRpb25zaGlwLE9wdGlvbmFs {
-    LineThickness: 2;
-    LineStyle: 10-10;
-    LineColor: #444444;
-    FontColor: #444444;
-    FontSize: 24;
-    MaximumWidth: 200;
-  }
   // transparent element for relationships in legend
   .Element-Transparent {
     BackgroundColor: transparent;
@@ -74,12 +65,9 @@ person "==Person" <<Element-RWxlbWVudCxQZXJzb24=>>
 
 rectangle "==Software System" <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0=>>
 
-rectangle "==Software System, External, Optional" <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWwsT3B0aW9uYWw=>>
+rectangle "==Software System, External" <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWw=>>
 
 rectangle "." <<.Element-Transparent>> as 1
 1 --> 1 <<Relationship-UmVsYXRpb25zaGlw>> : "Relationship"
-
-rectangle "." <<.Element-Transparent>> as 2
-2 --> 2 <<Relationship-UmVsYXRpb25zaGlwLE9wdGlvbmFs>> : "Optional"
 
 @enduml

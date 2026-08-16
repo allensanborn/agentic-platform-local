@@ -84,6 +84,18 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 450;
   }
+  // Element,Container,Sandbox
+  .Element-RWxlbWVudCxDb250YWluZXIsU2FuZGJveA== {
+    BackgroundColor: #4e342e;
+    LineColor: #362420;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
   // Element,Container,Tools
   .Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM= {
     BackgroundColor: #1565c0;
@@ -117,15 +129,6 @@ hide stereotype
     FontSize: 24;
     MaximumWidth: 200;
   }
-  // Relationship,Broken
-  .Relationship-UmVsYXRpb25zaGlwLEJyb2tlbg== {
-    LineThickness: 2;
-    LineStyle: 2-2;
-    LineColor: #b00020;
-    FontColor: #b00020;
-    FontSize: 24;
-    MaximumWidth: 200;
-  }
   // Element
   .DeploymentNode-RWxlbWVudA== {
     BackgroundColor: #ffffff;
@@ -139,48 +142,65 @@ hide stereotype
   }
 </style>
 
-rectangle "Developer Laptop (macOS, Apple Silicon)\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon {
-  rectangle "Host OS\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS {
-    rectangle "Ollama\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS.Ollama {
-      rectangle "==Local Model Runtime\n<size:16>[Container: Ollama (workshop: Amazon Bedrock)]</size>\n\nServes qwen3:8b and llama3.2:1b over an OpenAI-compatible API. Runs on the HOST, not in the cluster, because that is where the GPU is." <<Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS.Ollama.LocalModelRuntime_1
+rectangle "Developer Laptop (macOS, Apple Silicon, 24 GB)\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB {
+  rectangle "Host OS\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.HostOS {
+    rectangle "Ollama\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.HostOS.Ollama {
+      rectangle "==Local Model Runtime\n<size:16>[Container: Ollama (workshop: Amazon Bedrock)]</size>\n\nServes qwen3:8b and llama3.2:1b over an OpenAI-compatible API. Runs on the HOST, not in the cluster, because that is where the GPU is." <<Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw=>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.HostOS.Ollama.LocalModelRuntime_1
     }
 
   }
 
-  rectangle "Docker Desktop VM\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM {
-    rectangle "k3d cluster 'agentic'\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic {
-      rectangle "namespace: envoy-gateway-system\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem {
-        rectangle "Envoy data plane\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane {
-          hexagon "==AI Gateway\n<size:16>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</size>\n\nLAB 0 control point. Owns WHICH model answers: agents ask for an alias, the gateway rewrites it to a real model. Also the only thing that would hold a model credential." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1
+  rectangle "OrbStack Linux VM\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM {
+    rectangle "k3d cluster 'agentic'\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic {
+      rectangle "namespace: envoy-gateway-system\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceenvoygatewaysystem {
+        rectangle "Envoy data plane\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane {
+          hexagon "==AI Gateway\n<size:16>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</size>\n\nLAB 0 control point. Owns WHICH model answers: agents ask for an alias, the gateway rewrites it to a real model. Also the only thing that would hold a model credential." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1
         }
 
       }
 
-      rectangle "namespace: agentgateway-system\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem {
-        hexagon "==Agent Gateway\n<size:16>[Container: agentgateway (workshop: same)]</size>\n\nLAB 3/4 control point. Owns WHICH TOOLS an agent can see and call. Because tool calls now cross a network they are interceptable — lab 4 spends that." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1
+      rectangle "namespace: agentgateway-system\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentgatewaysystem {
+        hexagon "==Agent Gateway\n<size:16>[Container: agentgateway (workshop: same)]</size>\n\nLAB 3/4 control point. Owns WHICH TOOLS an agent can see and call. Because tool calls now cross a network they are interceptable — lab 4 spends that." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1
       }
 
-      rectangle "namespace: identity\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceidentity {
-        rectangle "==Identity Provider\n<size:16>[Container: Keycloak (workshop: Amazon Cognito)]</size>\n\nIssues JWTs carrying a `groups` claim. The ENTIRE Cognito coupling this replaces was two strings (issuer, JWKS) and one claim name: cognito:groups -> groups." <<Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceidentity.IdentityProvider_1
+      rectangle "namespace: identity\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceidentity {
+        rectangle "==Identity Provider\n<size:16>[Container: Keycloak (workshop: Amazon Cognito)]</size>\n\nIssues JWTs carrying a `groups` claim. The ENTIRE Cognito coupling this replaces was two strings (issuer, JWKS) and one claim name: cognito:groups -> groups." <<Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk=>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceidentity.IdentityProvider_1
       }
 
-      rectangle "namespace: telemetry\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry {
-        hexagon "==OTel Collector\n<size:16>[Container: OpenTelemetry Collector (workshop: same)]</size>\n\nLAB 2 control point. Every workload speaks plain OTLP here and holds NO credential for the tracing backend — one key to rotate. Also where telemetry is SHAPED: a filter rule drops the per-SSE-chunk spans that took one trace from 543 spans to 9." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1
-        rectangle "==Trace Backend\n<size:16>[Container: Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)]</size>\n\nRenders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes." <<Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.TraceBackend_1
+      rectangle "namespace: gitea\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacegitea {
+        rectangle "==Git Server\n<size:16>[Container: Gitea (workshop: same)]</size>\n\nHolds the repo the coding agent edits. Also the human-in-the-loop boundary: the agent's job ends at a PR." <<Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM=>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacegitea.GitServer_1
       }
 
-      rectangle "namespace: default\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault {
-        rectangle "Deployment: customer-agent\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent {
-          rectangle "==Customer Agent\n<size:16>[Container: Python, Strands Agents SDK, FastAPI]</size>\n\nAgent loop: picks tools, calls the model, streams SSE. agent.py/server.py run VERBATIM from the workshop." <<Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1
+      rectangle "namespace: agent-sandbox\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentsandbox {
+        hexagon "==Code Sandbox\n<size:16>[Container: gVisor via RuntimeClass + upstream agent-sandbox (workshop: Kata + Firecracker)]</size>\n\nRuns model-written pandas air-gapped and single-use: claim, run, destroy, pool refills. No network, no Kubernetes token. Own kernel — verified the workshop's own way, uname -r returns 4.19.0-gvisor." <<Element-RWxlbWVudCxDb250YWluZXIsU2FuZGJveA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentsandbox.CodeSandbox_1
+        hexagon "==Coding Sandbox\n<size:16>[Container: gVisor + Claude Code (workshop: Kata/Firecracker + Claude Code)]</size>\n\nRuns the real `claude -p` CLI, unpatched. Egress locked to exactly two in-cluster destinations; no standing credential; no service-account token." <<Element-RWxlbWVudCxDb250YWluZXIsU2FuZGJveA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentsandbox.CodingSandbox_1
+      }
+
+      rectangle "namespace: telemetry\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacetelemetry {
+        hexagon "==OTel Collector\n<size:16>[Container: OpenTelemetry Collector (workshop: same)]</size>\n\nLAB 2 control point. Every workload speaks plain OTLP here and holds NO credential for the tracing backend — one key to rotate. Also where telemetry is SHAPED: a filter rule drops the per-SSE-chunk spans that took one trace from 543 spans to 9." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1
+        rectangle "==Trace Backend\n<size:16>[Container: Langfuse (workshop: same). Six containers at ~1.6 GiB — the 16 GiB sizing guidance is a production recommendation, not a floor; see ADR 0008]</size>\n\nRenders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes, prompt/completion rendering and token cost." <<Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacetelemetry.TraceBackend_1
+      }
+
+      rectangle "namespace: default\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault {
+        rectangle "Deployment: customer-agent\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent {
+          rectangle "==Customer Agent\n<size:16>[Container: Python, Strands Agents SDK, FastAPI]</size>\n\nAgent loop: picks tools, calls the model, streams SSE. agent.py/server.py run VERBATIM from the workshop." <<Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ=>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1
         }
 
-        rectangle "Deployment: mcp-server\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver {
-          rectangle "==MCP Tool Server\n<size:16>[Container: Python, FastMCP (workshop: same)]</size>\n\nlookup_order, check_inventory, initiate_return. Ships and scales independently of the agent; discovered at runtime via list_tools." <<Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1
-          database "==Orders Store\n<size:16>[Container: SQLite (workshop: Amazon DynamoDB)]</size>\n\n500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.OrdersStore_1
+        rectangle "Deployment: mcp-server\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver {
+          rectangle "==MCP Tool Server\n<size:16>[Container: Python, FastMCP (workshop: same)]</size>\n\nlookup_order, check_inventory, initiate_return. Ships and scales independently of the agent; discovered at runtime via list_tools." <<Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM=>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1
+          database "==Orders Store\n<size:16>[Container: SQLite (workshop: Amazon DynamoDB)]</size>\n\n500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.OrdersStore_1
         }
 
-        rectangle "Deployment: chat-ui\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentchatui {
-          rectangle "==Chat UI\n<size:16>[Container: Chainlit (workshop: same)]</size>\n\nStreams the agent's answer and renders tool calls as steps." <<Element-RWxlbWVudCxDb250YWluZXIsVUk=>> as Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentchatui.ChatUI_1
+        rectangle "Deployment: chat-ui\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentchatui {
+          rectangle "==Chat UI\n<size:16>[Container: Chainlit (workshop: same)]</size>\n\nStreams the agent's answer and renders tool calls as steps." <<Element-RWxlbWVudCxDb250YWluZXIsVUk=>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentchatui.ChatUI_1
+        }
+
+        rectangle "Deployment: code-executor-mcp\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodeexecutormcp {
+          hexagon "==Code-Exec Broker\n<size:16>[Container: Python, FastMCP (workshop: same)]</size>\n\nLAB 5 control point. The model picks a period/region; the BROKER builds the scoped, parameterized query. Raw rows enter the sandbox as a FILE, never through the LLM context; the chart returns as bytes behind a short chart_id the model cannot dereference." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodeexecutormcp.CodeExecBroker_1
+        }
+
+        rectangle "Deployment: coding-agent-dispatcher\n<size:16>[Deployment Node]</size>" <<DeploymentNode-RWxlbWVudA==>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodingagentdispatcher {
+          hexagon "==Coding-Agent Dispatcher\n<size:16>[Container: Python, FastAPI (workshop: same)]</size>\n\nLABS 6-7 control point. Mints a per-run git token and revokes it after; claims a sandbox; and holds the push credential so the MODEL never does — Claude is told to commit, not to push." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodingagentdispatcher.CodingAgentDispatcher_1
         }
 
       }
@@ -191,15 +211,23 @@ rectangle "Developer Laptop (macOS, Apple Silicon)\n<size:16>[Deployment Node]</
 
 }
 
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.HostOS.Ollama.LocalModelRuntime_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Rewrites alias -> qwen3:8b, forwards\n<size:16>[HTTP, OpenAI wire format]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceidentity.IdentityProvider_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Fetches JWKS, validates every token (mode: Strict)\n<size:16>[HTTP]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 <<Relationship-UmVsYXRpb25zaGlwLEJyb2tlbg==>> : "Spans (configured; not yet landing — see ADR 0004)\n<size:16>[OTLP/gRPC]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.TraceBackend_1 <<Relationship-UmVsYXRpb25zaGlw>> : "The single authenticated egress\n<size:16>[OTLP/gRPC]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Chat completions, asking for the ALIAS 'local-smart'\n<size:16>[HTTP, OpenAI wire format]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 <<Relationship-UmVsYXRpb25zaGlw>> : "list_tools at session start, then tool calls\n<size:16>[MCP / StreamableHTTP]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Spans, zero tracing code — opentelemetry-instrument patches httpx + FastAPI\n<size:16>[OTLP/HTTP]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Proxies MCP, and enforces per-tool authorization\n<size:16>[MCP / StreamableHTTP]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.OrdersStore_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Scoped, parameterized read\n<size:16>[SQLite]</size>"
-Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentchatui.ChatUI_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon.DockerDesktopVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 <<Relationship-UmVsYXRpb25zaGlw>> : "POST /chat, consumes SSE\n<size:16>[HTTP/SSE]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.HostOS.Ollama.LocalModelRuntime_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Rewrites alias -> qwen3:8b, forwards\n<size:16>[HTTP, OpenAI wire format]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceidentity.IdentityProvider_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Fetches JWKS, validates every token (mode: Strict)\n<size:16>[HTTP]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentsandbox.CodingSandbox_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Anthropic Messages format — the gateway translates to OpenAI and holds the key\n<size:16>[HTTPS]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentsandbox.CodingSandbox_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacegitea.GitServer_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Clones and commits. The WRAPPER pushes; the model never holds the credential\n<size:16>[HTTP]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Spans. Needed appProtocol: grpc on the collector Service — without it Envoy speaks gRPC over HTTP/1.1 and the receiver rejects every stream while reporting nothing\n<size:16>[OTLP/gRPC]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacetelemetry.TraceBackend_1 <<Relationship-UmVsYXRpb25zaGlw>> : "The single authenticated egress\n<size:16>[OTLP/gRPC]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceenvoygatewaysystem.Envoydataplane.AIGateway_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Chat completions, asking for the ALIAS 'local-smart'\n<size:16>[HTTP, OpenAI wire format]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 <<Relationship-UmVsYXRpb25zaGlw>> : "list_tools at session start, then tool calls\n<size:16>[MCP / StreamableHTTP]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacetelemetry.OTelCollector_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Spans, zero tracing code — opentelemetry-instrument patches httpx + FastAPI\n<size:16>[OTLP/HTTP]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentgatewaysystem.AgentGateway_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Proxies MCP, and enforces per-tool authorization\n<size:16>[MCP / StreamableHTTP]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.MCPToolServer_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.OrdersStore_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Scoped, parameterized read\n<size:16>[SQLite]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentchatui.ChatUI_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 <<Relationship-UmVsYXRpb25zaGlw>> : "POST /chat, consumes SSE\n<size:16>[HTTP/SSE]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodeexecutormcp.CodeExecBroker_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentsandbox.CodeSandbox_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Uploads rows + generated code as FILES, executes, reads back, destroys\n<size:16>[HTTP, single-use]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcustomeragent.CustomerAgent_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodeexecutormcp.CodeExecBroker_1 <<Relationship-UmVsYXRpb25zaGlw>> : "run_python(period, region) — gated to the sales-analyst persona\n<size:16>[MCP via the agent gateway]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodeexecutormcp.CodeExecBroker_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentmcpserver.OrdersStore_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Scoped, parameterized query the model never writes\n<size:16>[SQLite]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodingagentdispatcher.CodingAgentDispatcher_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacegitea.GitServer_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Mints a per-run token, pushes the branch, opens the PR, revokes the token\n<size:16>[HTTP]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacegitea.GitServer_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodingagentdispatcher.CodingAgentDispatcher_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Webhook on the `agent` label\n<size:16>[HTTP]</size>"
+Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespacedefault.Deploymentcodingagentdispatcher.CodingAgentDispatcher_1 --> Laptop.DeveloperLaptopmacOSAppleSilicon24GB.OrbStackLinuxVM.k3dclusteragentic.namespaceagentsandbox.CodingSandbox_1 <<Relationship-UmVsYXRpb25zaGlw>> : "Claims a sandbox, uploads the task, runs claude -p\n<size:16>[HTTP, single-use]</size>"
 
 @enduml

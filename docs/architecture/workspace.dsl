@@ -21,8 +21,8 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
         shopper  = person "Shopper" "Asks about their order in natural language."
         operator = person "Platform Operator" "Runs the cluster and owns the control points."
 
-        anthropic = softwareSystem "Anthropic API" "Frontier model, used only where a local model is not good enough (labs 6-7)." {
-            tags "External" "Optional"
+        openrouter = softwareSystem "OpenRouter" "Free-tier frontier-class models. Reached ONLY by the gateway, over direct TLS with certificate verification — there is no cleartext hop and no sandbox ever talks to it." {
+            tags "External"
         }
 
         platform = softwareSystem "Agentic Platform (local)" "Customer-service agent and the infrastructure that governs it." {
@@ -47,7 +47,7 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                 tags "ControlPoint"
             }
 
-            tracing = container "Trace Backend" "Renders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes." "Jaeger (workshop: Langfuse — six containers, would not fit here; see ADR 0004)" {
+            tracing = container "Trace Backend" "Renders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes, prompt/completion rendering and token cost." "Langfuse (workshop: same). Six containers at ~1.6 GiB — the 16 GiB sizing guidance is a production recommendation, not a floor; see ADR 0008" {
                 tags "Observability"
             }
 
@@ -61,6 +61,26 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
 
             idp = container "Identity Provider" "Issues JWTs carrying a `groups` claim. The ENTIRE Cognito coupling this replaces was two strings (issuer, JWKS) and one claim name: cognito:groups -> groups." "Keycloak (workshop: Amazon Cognito)" {
                 tags "Identity"
+            }
+
+            broker = container "Code-Exec Broker" "LAB 5 control point. The model picks a period/region; the BROKER builds the scoped, parameterized query. Raw rows enter the sandbox as a FILE, never through the LLM context; the chart returns as bytes behind a short chart_id the model cannot dereference." "Python, FastMCP (workshop: same)" {
+                tags "ControlPoint"
+            }
+
+            sandbox = container "Code Sandbox" "Runs model-written pandas air-gapped and single-use: claim, run, destroy, pool refills. No network, no Kubernetes token. Own kernel — verified the workshop's own way, uname -r returns 4.19.0-gvisor." "gVisor via RuntimeClass + upstream agent-sandbox (workshop: Kata + Firecracker)" {
+                tags "Sandbox"
+            }
+
+            gitea = container "Git Server" "Holds the repo the coding agent edits. Also the human-in-the-loop boundary: the agent's job ends at a PR." "Gitea (workshop: same)" {
+                tags "Tools"
+            }
+
+            dispatcher = container "Coding-Agent Dispatcher" "LABS 6-7 control point. Mints a per-run git token and revokes it after; claims a sandbox; and holds the push credential so the MODEL never does — Claude is told to commit, not to push." "Python, FastAPI (workshop: same)" {
+                tags "ControlPoint"
+            }
+
+            codingsandbox = container "Coding Sandbox" "Runs the real `claude -p` CLI, unpatched. Egress locked to exactly two in-cluster destinations; no standing credential; no service-account token." "gVisor + Claude Code (workshop: Kata/Firecracker + Claude Code)" {
+                tags "Sandbox"
             }
 
             orders = container "Orders Store" "500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." "SQLite (workshop: Amazon DynamoDB)" {
@@ -83,23 +103,30 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
         gateway -> ollama    "Rewrites alias -> qwen3:8b, forwards" "HTTP, OpenAI wire format"
 
         agent     -> collector "Spans, zero tracing code — opentelemetry-instrument patches httpx + FastAPI" "OTLP/HTTP"
-        gateway   -> collector "Spans (configured; not yet landing — see ADR 0004)" "OTLP/gRPC" {
-            tags "Broken"
-        }
+        gateway   -> collector "Spans. Needed appProtocol: grpc on the collector Service — without it Envoy speaks gRPC over HTTP/1.1 and the receiver rejects every stream while reporting nothing" "OTLP/gRPC"
         collector -> tracing   "The single authenticated egress" "OTLP/gRPC"
-        gateway -> anthropic "Same hop, different backend — a config change, not a code change" "HTTPS, Anthropic wire format" {
-            tags "Optional"
-        }
+        gateway -> openrouter "Same hop, different backend — a config change, not a code change. Direct TLS, system trust store, via BackendTLSPolicy" "HTTPS"
+
+        agent      -> broker        "run_python(period, region) — gated to the sales-analyst persona" "MCP via the agent gateway"
+        broker     -> orders        "Scoped, parameterized query the model never writes" "SQLite"
+        broker     -> sandbox       "Uploads rows + generated code as FILES, executes, reads back, destroys" "HTTP, single-use"
+
+        operator   -> gitea         "Labels an issue to trigger the agent"
+        gitea      -> dispatcher    "Webhook on the `agent` label" "HTTP"
+        dispatcher -> gitea         "Mints a per-run token, pushes the branch, opens the PR, revokes the token" "HTTP"
+        dispatcher -> codingsandbox "Claims a sandbox, uploads the task, runs claude -p" "HTTP, single-use"
+        codingsandbox -> gateway    "Anthropic Messages format — the gateway translates to OpenAI and holds the key" "HTTPS"
+        codingsandbox -> gitea      "Clones and commits. The WRAPPER pushes; the model never holds the credential" "HTTP"
 
         # --- deployment: where it all actually runs --------------------------------------
         deploymentEnvironment "Laptop" {
-            deploymentNode "Developer Laptop (macOS, Apple Silicon)" {
+            deploymentNode "Developer Laptop (macOS, Apple Silicon, 24 GB)" {
                 deploymentNode "Host OS" {
                     deploymentNode "Ollama" "Bound to 0.0.0.0:11434 so the cluster can reach it" {
                         containerInstance ollama
                     }
                 }
-                deploymentNode "Docker Desktop VM" "Reached from the cluster as host.docker.internal — NOT host.k3d.internal, which resolves to this VM rather than the Mac" {
+                deploymentNode "OrbStack Linux VM" "NOT Docker Desktop — assuming so cost a wrong memory ceiling AND a wrong TLS diagnosis. OrbStack allocates dynamically (soft cap memory_mib: 12288). Reached from the cluster as host.docker.internal; host.k3d.internal resolves to THIS VM, not the Mac." {
                     deploymentNode "k3d cluster 'agentic'" "k3s in Docker. Chosen over kind because kindnet silently ignores NetworkPolicy, which lab 5 depends on." {
                         deploymentNode "namespace: envoy-gateway-system" {
                             deploymentNode "Envoy data plane" "Service pinned to the name 'ai-gateway' so MODEL_BASE_URL is stable" {
@@ -111,6 +138,13 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                         }
                         deploymentNode "namespace: identity" {
                             containerInstance idp
+                        }
+                        deploymentNode "namespace: gitea" {
+                            containerInstance gitea
+                        }
+                        deploymentNode "namespace: agent-sandbox" "Warm pools of PRE-CLAIMED gVisor sandboxes. The air-gap NetworkPolicy must select a label that SURVIVES the claim relabel — agents.x-k8s.io/warm-pool-sandbox is removed on claim, so a policy keyed to it protects the sandbox only while it is idle (beads llm-wiki-661.13)." {
+                            containerInstance sandbox
+                            containerInstance codingsandbox
                         }
                         deploymentNode "namespace: telemetry" {
                             containerInstance collector
@@ -127,6 +161,12 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                             deploymentNode "Deployment: chat-ui" {
                                 containerInstance ui
                             }
+                            deploymentNode "Deployment: code-executor-mcp" {
+                                containerInstance broker
+                            }
+                            deploymentNode "Deployment: coding-agent-dispatcher" {
+                                containerInstance dispatcher
+                            }
                         }
                     }
                 }
@@ -142,6 +182,11 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
 
         container platform "Containers" "The hops. Lab 0 puts a control point between the agent and the model; later labs add one per hop." {
             include *
+            autolayout lr
+        }
+
+        container platform "ControlPoints" "Just the chokepoints and what each one governs. Every lab adds exactly one, and none of them makes the agent smarter or more trusted." {
+            include gateway mcpgw collector broker dispatcher agent ollama openrouter idp sandbox codingsandbox
             autolayout lr
         }
 
@@ -191,6 +236,11 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
                 background #ad1457
                 color #ffffff
             }
+            element "Sandbox" {
+                background #4e342e
+                color #ffffff
+                shape hexagon
+            }
             element "Tools" {
                 background #1565c0
                 color #ffffff
@@ -205,10 +255,6 @@ workspace "Agentic Platform (local)" "AWS Secure-AI-Agents-on-EKS workshop, rebu
             }
             element "Optional" {
                 opacity 60
-            }
-            relationship "Broken" {
-                style dotted
-                color #b00020
             }
             relationship "Optional" {
                 style dashed

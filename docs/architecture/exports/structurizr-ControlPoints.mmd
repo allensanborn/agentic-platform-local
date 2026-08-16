@@ -4,38 +4,24 @@ graph LR
   subgraph diagram ["Container View: Agentic Platform (local)"]
     style diagram fill:#ffffff,stroke:#ffffff
 
-    1["<div style='font-weight: bold'>Shopper</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Asks about their order in<br />natural language.</div>"]
-    style 1 fill:#08427b,stroke:#052e56,color:#ffffff
-    2["<div style='font-weight: bold'>Platform Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Runs the cluster and owns the<br />control points.</div>"]
-    style 2 fill:#08427b,stroke:#052e56,color:#ffffff
     3["<div style='font-weight: bold'>OpenRouter</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Free-tier frontier-class<br />models. Reached ONLY by the<br />gateway, over direct TLS with<br />certificate verification —<br />there is no cleartext hop and<br />no sandbox ever talks to it.</div>"]
     style 3 fill:#999999,stroke:#6b6b6b,color:#ffffff
 
     subgraph 4 ["Agentic Platform (local)"]
       style 4 fill:#ffffff,stroke:#0b4884,color:#0b4884
 
-      10["<div style='font-weight: bold'>Trace Backend</div><div style='font-size: 70%; margin-top: 0px'>[Container: Langfuse (workshop: same). Six containers at ~1.6 GiB — the 16 GiB sizing guidance is a production recommendation, not a floor; see ADR 0008]</div><div style='font-size: 80%; margin-top:10px'>Renders the agent trace tree:<br />invoke_agent -> event loop -><br />chat -> tool, with GenAI<br />semantic-convention<br />attributes, prompt/completion<br />rendering and token cost.</div>"]
-      style 10 fill:#00695c,stroke:#004940,color:#ffffff
       11["<div style='font-weight: bold'>Agent Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: agentgateway (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>LAB 3/4 control point. Owns<br />WHICH TOOLS an agent can see<br />and call. Because tool calls<br />now cross a network they are<br />interceptable — lab 4 spends<br />that.</div>"]
       style 11 fill:#b8860b,stroke:#805d07,color:#ffffff
-      12["<div style='font-weight: bold'>MCP Tool Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastMCP (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>lookup_order,<br />check_inventory,<br />initiate_return. Ships and<br />scales independently of the<br />agent; discovered at runtime<br />via list_tools.</div>"]
-      style 12 fill:#1565c0,stroke:#0e4686,color:#ffffff
       13["<div style='font-weight: bold'>Identity Provider</div><div style='font-size: 70%; margin-top: 0px'>[Container: Keycloak (workshop: Amazon Cognito)]</div><div style='font-size: 80%; margin-top:10px'>Issues JWTs carrying a<br />`groups` claim. The ENTIRE<br />Cognito coupling this<br />replaces was two strings<br />(issuer, JWKS) and one claim<br />name: cognito:groups -><br />groups.</div>"]
       style 13 fill:#ad1457,stroke:#790e3c,color:#ffffff
       14["<div style='font-weight: bold'>Code-Exec Broker</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastMCP (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>LAB 5 control point. The<br />model picks a period/region;<br />the BROKER builds the scoped,<br />parameterized query. Raw rows<br />enter the sandbox as a FILE,<br />never through the LLM<br />context; the chart returns as<br />bytes behind a short chart_id<br />the model cannot dereference.</div>"]
       style 14 fill:#b8860b,stroke:#805d07,color:#ffffff
       15["<div style='font-weight: bold'>Code Sandbox</div><div style='font-size: 70%; margin-top: 0px'>[Container: gVisor via RuntimeClass + upstream agent-sandbox (workshop: Kata + Firecracker)]</div><div style='font-size: 80%; margin-top:10px'>Runs model-written pandas<br />air-gapped and single-use:<br />claim, run, destroy, pool<br />refills. No network, no<br />Kubernetes token. Own kernel<br />— verified the workshop's own<br />way, uname -r returns<br />4.19.0-gvisor.</div>"]
       style 15 fill:#4e342e,stroke:#362420,color:#ffffff
-      16["<div style='font-weight: bold'>Git Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Gitea (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>Holds the repo the coding<br />agent edits. Also the<br />human-in-the-loop boundary:<br />the agent's job ends at a PR.</div>"]
-      style 16 fill:#1565c0,stroke:#0e4686,color:#ffffff
       17["<div style='font-weight: bold'>Coding-Agent Dispatcher</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>LABS 6-7 control point. Mints<br />a per-run git token and<br />revokes it after; claims a<br />sandbox; and holds the push<br />credential so the MODEL never<br />does — Claude is told to<br />commit, not to push.</div>"]
       style 17 fill:#b8860b,stroke:#805d07,color:#ffffff
       18["<div style='font-weight: bold'>Coding Sandbox</div><div style='font-size: 70%; margin-top: 0px'>[Container: gVisor + Claude Code (workshop: Kata/Firecracker + Claude Code)]</div><div style='font-size: 80%; margin-top:10px'>Runs the real `claude -p`<br />CLI, unpatched. Egress locked<br />to exactly two in-cluster<br />destinations; no standing<br />credential; no<br />service-account token.</div>"]
       style 18 fill:#4e342e,stroke:#362420,color:#ffffff
-      19[("<div style='font-weight: bold'>Orders Store</div><div style='font-size: 70%; margin-top: 0px'>[Container: SQLite (workshop: Amazon DynamoDB)]</div><div style='font-size: 80%; margin-top:10px'>500 seeded orders. Read via a<br />scoped, parameterized query —<br />the agent never writes SQL.</div>")]
-      style 19 fill:#2e7d32,stroke:#205723,color:#ffffff
-      5["<div style='font-weight: bold'>Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: Chainlit (workshop: same)]</div><div style='font-size: 80%; margin-top:10px'>Streams the agent's answer<br />and renders tool calls as<br />steps.</div>"]
-      style 5 fill:#438dd5,stroke:#2e6295,color:#ffffff
       6["<div style='font-weight: bold'>Customer Agent</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, Strands Agents SDK, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>Agent loop: picks tools,<br />calls the model, streams SSE.<br />agent.py/server.py run<br />VERBATIM from the workshop.</div>"]
       style 6 fill:#c0392b,stroke:#86271e,color:#ffffff
       7["<div style='font-weight: bold'>AI Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</div><div style='font-size: 80%; margin-top:10px'>LAB 0 control point. Owns<br />WHICH model answers: agents<br />ask for an alias, the gateway<br />rewrites it to a real model.<br />Also the only thing that<br />would hold a model<br />credential.</div>"]
@@ -46,28 +32,16 @@ graph LR
       style 9 fill:#b8860b,stroke:#805d07,color:#ffffff
     end
 
-    1-. "<div>Asks about an order</div><div style='font-size: 70%'></div>" .->5
-    2-. "<div>Changes the model alias table<br />(no agent redeploy)</div><div style='font-size: 70%'></div>" .->7
-    5-. "<div>POST /chat, consumes SSE</div><div style='font-size: 70%'>[HTTP/SSE]</div>" .->6
     6-. "<div>Chat completions, asking for<br />the ALIAS 'local-smart'</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->7
     6-. "<div>list_tools at session start,<br />then tool calls</div><div style='font-size: 70%'>[MCP / StreamableHTTP]</div>" .->11
-    11-. "<div>Proxies MCP, and enforces<br />per-tool authorization</div><div style='font-size: 70%'>[MCP / StreamableHTTP]</div>" .->12
     11-. "<div>Fetches JWKS, validates every<br />token (mode: Strict)</div><div style='font-size: 70%'>[HTTP]</div>" .->13
-    1-. "<div>Signs in as a persona</div><div style='font-size: 70%'>[OIDC]</div>" .->13
-    12-. "<div>Scoped, parameterized read</div><div style='font-size: 70%'>[SQLite]</div>" .->19
     7-. "<div>Rewrites alias -> qwen3:8b,<br />forwards</div><div style='font-size: 70%'>[HTTP, OpenAI wire format]</div>" .->8
     6-. "<div>Spans, zero tracing code —<br />opentelemetry-instrument<br />patches httpx + FastAPI</div><div style='font-size: 70%'>[OTLP/HTTP]</div>" .->9
     7-. "<div>Spans. Needed appProtocol:<br />grpc on the collector Service<br />— without it Envoy speaks<br />gRPC over HTTP/1.1 and the<br />receiver rejects every stream<br />while reporting nothing</div><div style='font-size: 70%'>[OTLP/gRPC]</div>" .->9
-    9-. "<div>The single authenticated<br />egress</div><div style='font-size: 70%'>[OTLP/gRPC]</div>" .->10
     7-. "<div>Same hop, different backend —<br />a config change, not a code<br />change. Direct TLS, system<br />trust store, via<br />BackendTLSPolicy</div><div style='font-size: 70%'>[HTTPS]</div>" .->3
     6-. "<div>run_python(period, region) —<br />gated to the sales-analyst<br />persona</div><div style='font-size: 70%'>[MCP via the agent gateway]</div>" .->14
-    14-. "<div>Scoped, parameterized query<br />the model never writes</div><div style='font-size: 70%'>[SQLite]</div>" .->19
     14-. "<div>Uploads rows + generated code<br />as FILES, executes, reads<br />back, destroys</div><div style='font-size: 70%'>[HTTP, single-use]</div>" .->15
-    2-. "<div>Labels an issue to trigger<br />the agent</div><div style='font-size: 70%'></div>" .->16
-    16-. "<div>Webhook on the `agent` label</div><div style='font-size: 70%'>[HTTP]</div>" .->17
-    17-. "<div>Mints a per-run token, pushes<br />the branch, opens the PR,<br />revokes the token</div><div style='font-size: 70%'>[HTTP]</div>" .->16
     17-. "<div>Claims a sandbox, uploads the<br />task, runs claude -p</div><div style='font-size: 70%'>[HTTP, single-use]</div>" .->18
     18-. "<div>Anthropic Messages format —<br />the gateway translates to<br />OpenAI and holds the key</div><div style='font-size: 70%'>[HTTPS]</div>" .->7
-    18-. "<div>Clones and commits. The<br />WRAPPER pushes; the model<br />never holds the credential</div><div style='font-size: 70%'>[HTTP]</div>" .->16
 
   end

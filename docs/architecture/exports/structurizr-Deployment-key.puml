@@ -80,6 +80,18 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 200;
   }
+  // Element,Container,Sandbox
+  .Element-RWxlbWVudCxDb250YWluZXIsU2FuZGJveA== {
+    BackgroundColor: #4e342e;
+    LineColor: #362420;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ffffff;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 200;
+  }
   // Element,Container,Tools
   .Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM= {
     BackgroundColor: #1565c0;
@@ -110,15 +122,6 @@ hide stereotype
     LineStyle: 10-10;
     LineColor: #444444;
     FontColor: #444444;
-    FontSize: 24;
-    MaximumWidth: 200;
-  }
-  // Relationship,Broken
-  .Relationship-UmVsYXRpb25zaGlwLEJyb2tlbg== {
-    LineThickness: 2;
-    LineStyle: 2-2;
-    LineColor: #b00020;
-    FontColor: #b00020;
     FontSize: 24;
     MaximumWidth: 200;
   }
@@ -156,14 +159,13 @@ rectangle "==Container, Model" <<Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw=>>
 
 rectangle "==Container, Observability" <<Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ==>>
 
+hexagon "==Container, Sandbox" <<Element-RWxlbWVudCxDb250YWluZXIsU2FuZGJveA==>>
+
 rectangle "==Container, Tools" <<Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM=>>
 
 rectangle "==Container, UI" <<Element-RWxlbWVudCxDb250YWluZXIsVUk=>>
 
 rectangle "." <<.Element-Transparent>> as 1
 1 --> 1 <<Relationship-UmVsYXRpb25zaGlw>> : "Relationship"
-
-rectangle "." <<.Element-Transparent>> as 2
-2 --> 2 <<Relationship-UmVsYXRpb25zaGlwLEJyb2tlbg==>> : "Broken"
 
 @enduml

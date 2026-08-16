@@ -14,7 +14,8 @@ make diagrams-lint   # model lint
 |---|---|
 | `SystemContext` | Who uses the platform, and the one external system it can reach |
 | `Containers` | **The hops.** Each lab adds a control point on one of them |
-| `Deployment` | Where each container actually runs on one laptop |
+| `ControlPoints` | **Start here.** Just the chokepoints and what each governs — every lab adds exactly one |
+| `Deployment` | Where each container actually runs on one laptop, namespace by namespace |
 
 ## Why the deployment view earns its place
 

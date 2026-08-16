@@ -1,5 +1,5 @@
 @startuml
-title <size:24>Container View: Agentic Platform (local)</size>\n<size:24>The hops. Lab 0 puts a control point between the agent and the model; later labs add one per hop.</size>
+title <size:24>Container View: Agentic Platform (local)</size>\n<size:24>Just the chokepoints and what each one governs. Every lab adds exactly one, and none of them makes the agent smarter or more trusted.</size>
 
 set separator none
 left to right direction
@@ -36,18 +36,6 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 450;
   }
-  // Element,Container,Data
-  .Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ== {
-    BackgroundColor: #2e7d32;
-    LineColor: #205723;
-    LineStyle: 0;
-    LineThickness: 2;
-    FontColor: #ffffff;
-    FontSize: 24;
-    HorizontalAlignment: center;
-    Shadowing: 0;
-    MaximumWidth: 450;
-  }
   // Element,Container,Identity
   .Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk= {
     BackgroundColor: #ad1457;
@@ -72,58 +60,10 @@ hide stereotype
     Shadowing: 0;
     MaximumWidth: 450;
   }
-  // Element,Container,Observability
-  .Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ== {
-    BackgroundColor: #00695c;
-    LineColor: #004940;
-    LineStyle: 0;
-    LineThickness: 2;
-    FontColor: #ffffff;
-    FontSize: 24;
-    HorizontalAlignment: center;
-    Shadowing: 0;
-    MaximumWidth: 450;
-  }
   // Element,Container,Sandbox
   .Element-RWxlbWVudCxDb250YWluZXIsU2FuZGJveA== {
     BackgroundColor: #4e342e;
     LineColor: #362420;
-    LineStyle: 0;
-    LineThickness: 2;
-    FontColor: #ffffff;
-    FontSize: 24;
-    HorizontalAlignment: center;
-    Shadowing: 0;
-    MaximumWidth: 450;
-  }
-  // Element,Container,Tools
-  .Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM= {
-    BackgroundColor: #1565c0;
-    LineColor: #0e4686;
-    LineStyle: 0;
-    LineThickness: 2;
-    FontColor: #ffffff;
-    FontSize: 24;
-    HorizontalAlignment: center;
-    Shadowing: 0;
-    MaximumWidth: 450;
-  }
-  // Element,Container,UI
-  .Element-RWxlbWVudCxDb250YWluZXIsVUk= {
-    BackgroundColor: #438dd5;
-    LineColor: #2e6295;
-    LineStyle: 0;
-    LineThickness: 2;
-    FontColor: #ffffff;
-    FontSize: 24;
-    HorizontalAlignment: center;
-    Shadowing: 0;
-    MaximumWidth: 450;
-  }
-  // Element,Person
-  .Element-RWxlbWVudCxQZXJzb24= {
-    BackgroundColor: #08427b;
-    LineColor: #052e56;
     LineStyle: 0;
     LineThickness: 2;
     FontColor: #ffffff;
@@ -166,50 +106,31 @@ hide stereotype
   }
 </style>
 
-person "==Shopper\n<size:16>[Person]</size>\n\nAsks about their order in natural language." <<Element-RWxlbWVudCxQZXJzb24=>> as Shopper
-person "==Platform Operator\n<size:16>[Person]</size>\n\nRuns the cluster and owns the control points." <<Element-RWxlbWVudCxQZXJzb24=>> as PlatformOperator
 rectangle "==OpenRouter\n<size:16>[Software System]</size>\n\nFree-tier frontier-class models. Reached ONLY by the gateway, over direct TLS with certificate verification — there is no cleartext hop and no sandbox ever talks to it." <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0sRXh0ZXJuYWw=>> as OpenRouter
 
 rectangle "Agentic Platform (local)\n<size:16>[Software System]</size>" <<Boundary-QWdlbnRpYyBQbGF0Zm9ybSAobG9jYWwp>> {
-  rectangle "==Trace Backend\n<size:16>[Container: Langfuse (workshop: same). Six containers at ~1.6 GiB — the 16 GiB sizing guidance is a production recommendation, not a floor; see ADR 0008]</size>\n\nRenders the agent trace tree: invoke_agent -> event loop -> chat -> tool, with GenAI semantic-convention attributes, prompt/completion rendering and token cost." <<Element-RWxlbWVudCxDb250YWluZXIsT2JzZXJ2YWJpbGl0eQ==>> as AgenticPlatformlocal.TraceBackend
   hexagon "==Agent Gateway\n<size:16>[Container: agentgateway (workshop: same)]</size>\n\nLAB 3/4 control point. Owns WHICH TOOLS an agent can see and call. Because tool calls now cross a network they are interceptable — lab 4 spends that." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.AgentGateway
-  rectangle "==MCP Tool Server\n<size:16>[Container: Python, FastMCP (workshop: same)]</size>\n\nlookup_order, check_inventory, initiate_return. Ships and scales independently of the agent; discovered at runtime via list_tools." <<Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM=>> as AgenticPlatformlocal.MCPToolServer
   rectangle "==Identity Provider\n<size:16>[Container: Keycloak (workshop: Amazon Cognito)]</size>\n\nIssues JWTs carrying a `groups` claim. The ENTIRE Cognito coupling this replaces was two strings (issuer, JWKS) and one claim name: cognito:groups -> groups." <<Element-RWxlbWVudCxDb250YWluZXIsSWRlbnRpdHk=>> as AgenticPlatformlocal.IdentityProvider
   hexagon "==Code-Exec Broker\n<size:16>[Container: Python, FastMCP (workshop: same)]</size>\n\nLAB 5 control point. The model picks a period/region; the BROKER builds the scoped, parameterized query. Raw rows enter the sandbox as a FILE, never through the LLM context; the chart returns as bytes behind a short chart_id the model cannot dereference." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.CodeExecBroker
   hexagon "==Code Sandbox\n<size:16>[Container: gVisor via RuntimeClass + upstream agent-sandbox (workshop: Kata + Firecracker)]</size>\n\nRuns model-written pandas air-gapped and single-use: claim, run, destroy, pool refills. No network, no Kubernetes token. Own kernel — verified the workshop's own way, uname -r returns 4.19.0-gvisor." <<Element-RWxlbWVudCxDb250YWluZXIsU2FuZGJveA==>> as AgenticPlatformlocal.CodeSandbox
-  rectangle "==Git Server\n<size:16>[Container: Gitea (workshop: same)]</size>\n\nHolds the repo the coding agent edits. Also the human-in-the-loop boundary: the agent's job ends at a PR." <<Element-RWxlbWVudCxDb250YWluZXIsVG9vbHM=>> as AgenticPlatformlocal.GitServer
   hexagon "==Coding-Agent Dispatcher\n<size:16>[Container: Python, FastAPI (workshop: same)]</size>\n\nLABS 6-7 control point. Mints a per-run git token and revokes it after; claims a sandbox; and holds the push credential so the MODEL never does — Claude is told to commit, not to push." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.CodingAgentDispatcher
   hexagon "==Coding Sandbox\n<size:16>[Container: gVisor + Claude Code (workshop: Kata/Firecracker + Claude Code)]</size>\n\nRuns the real `claude -p` CLI, unpatched. Egress locked to exactly two in-cluster destinations; no standing credential; no service-account token." <<Element-RWxlbWVudCxDb250YWluZXIsU2FuZGJveA==>> as AgenticPlatformlocal.CodingSandbox
-  database "==Orders Store\n<size:16>[Container: SQLite (workshop: Amazon DynamoDB)]</size>\n\n500 seeded orders. Read via a scoped, parameterized query — the agent never writes SQL." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YQ==>> as AgenticPlatformlocal.OrdersStore
-  rectangle "==Chat UI\n<size:16>[Container: Chainlit (workshop: same)]</size>\n\nStreams the agent's answer and renders tool calls as steps." <<Element-RWxlbWVudCxDb250YWluZXIsVUk=>> as AgenticPlatformlocal.ChatUI
   rectangle "==Customer Agent\n<size:16>[Container: Python, Strands Agents SDK, FastAPI]</size>\n\nAgent loop: picks tools, calls the model, streams SSE. agent.py/server.py run VERBATIM from the workshop." <<Element-RWxlbWVudCxDb250YWluZXIsQWdlbnQ=>> as AgenticPlatformlocal.CustomerAgent
   hexagon "==AI Gateway\n<size:16>[Container: Envoy AI Gateway (workshop: same, fronting Bedrock)]</size>\n\nLAB 0 control point. Owns WHICH model answers: agents ask for an alias, the gateway rewrites it to a real model. Also the only thing that would hold a model credential." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.AIGateway
   rectangle "==Local Model Runtime\n<size:16>[Container: Ollama (workshop: Amazon Bedrock)]</size>\n\nServes qwen3:8b and llama3.2:1b over an OpenAI-compatible API. Runs on the HOST, not in the cluster, because that is where the GPU is." <<Element-RWxlbWVudCxDb250YWluZXIsTW9kZWw=>> as AgenticPlatformlocal.LocalModelRuntime
   hexagon "==OTel Collector\n<size:16>[Container: OpenTelemetry Collector (workshop: same)]</size>\n\nLAB 2 control point. Every workload speaks plain OTLP here and holds NO credential for the tracing backend — one key to rotate. Also where telemetry is SHAPED: a filter rule drops the per-SSE-chunk spans that took one trace from 543 spans to 9." <<Element-RWxlbWVudCxDb250YWluZXIsQ29udHJvbFBvaW50>> as AgenticPlatformlocal.OTelCollector
 }
 
-Shopper --> AgenticPlatformlocal.ChatUI <<Relationship-UmVsYXRpb25zaGlw>> : "Asks about an order"
-PlatformOperator --> AgenticPlatformlocal.AIGateway <<Relationship-UmVsYXRpb25zaGlw>> : "Changes the model alias table (no agent redeploy)"
-AgenticPlatformlocal.ChatUI --> AgenticPlatformlocal.CustomerAgent <<Relationship-UmVsYXRpb25zaGlw>> : "POST /chat, consumes SSE\n<size:16>[HTTP/SSE]</size>"
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.AIGateway <<Relationship-UmVsYXRpb25zaGlw>> : "Chat completions, asking for the ALIAS 'local-smart'\n<size:16>[HTTP, OpenAI wire format]</size>"
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.AgentGateway <<Relationship-UmVsYXRpb25zaGlw>> : "list_tools at session start, then tool calls\n<size:16>[MCP / StreamableHTTP]</size>"
-AgenticPlatformlocal.AgentGateway --> AgenticPlatformlocal.MCPToolServer <<Relationship-UmVsYXRpb25zaGlw>> : "Proxies MCP, and enforces per-tool authorization\n<size:16>[MCP / StreamableHTTP]</size>"
 AgenticPlatformlocal.AgentGateway --> AgenticPlatformlocal.IdentityProvider <<Relationship-UmVsYXRpb25zaGlw>> : "Fetches JWKS, validates every token (mode: Strict)\n<size:16>[HTTP]</size>"
-Shopper --> AgenticPlatformlocal.IdentityProvider <<Relationship-UmVsYXRpb25zaGlw>> : "Signs in as a persona\n<size:16>[OIDC]</size>"
-AgenticPlatformlocal.MCPToolServer --> AgenticPlatformlocal.OrdersStore <<Relationship-UmVsYXRpb25zaGlw>> : "Scoped, parameterized read\n<size:16>[SQLite]</size>"
 AgenticPlatformlocal.AIGateway --> AgenticPlatformlocal.LocalModelRuntime <<Relationship-UmVsYXRpb25zaGlw>> : "Rewrites alias -> qwen3:8b, forwards\n<size:16>[HTTP, OpenAI wire format]</size>"
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.OTelCollector <<Relationship-UmVsYXRpb25zaGlw>> : "Spans, zero tracing code — opentelemetry-instrument patches httpx + FastAPI\n<size:16>[OTLP/HTTP]</size>"
 AgenticPlatformlocal.AIGateway --> AgenticPlatformlocal.OTelCollector <<Relationship-UmVsYXRpb25zaGlw>> : "Spans. Needed appProtocol: grpc on the collector Service — without it Envoy speaks gRPC over HTTP/1.1 and the receiver rejects every stream while reporting nothing\n<size:16>[OTLP/gRPC]</size>"
-AgenticPlatformlocal.OTelCollector --> AgenticPlatformlocal.TraceBackend <<Relationship-UmVsYXRpb25zaGlw>> : "The single authenticated egress\n<size:16>[OTLP/gRPC]</size>"
 AgenticPlatformlocal.AIGateway --> OpenRouter <<Relationship-UmVsYXRpb25zaGlw>> : "Same hop, different backend — a config change, not a code change. Direct TLS, system trust store, via BackendTLSPolicy\n<size:16>[HTTPS]</size>"
 AgenticPlatformlocal.CustomerAgent --> AgenticPlatformlocal.CodeExecBroker <<Relationship-UmVsYXRpb25zaGlw>> : "run_python(period, region) — gated to the sales-analyst persona\n<size:16>[MCP via the agent gateway]</size>"
-AgenticPlatformlocal.CodeExecBroker --> AgenticPlatformlocal.OrdersStore <<Relationship-UmVsYXRpb25zaGlw>> : "Scoped, parameterized query the model never writes\n<size:16>[SQLite]</size>"
 AgenticPlatformlocal.CodeExecBroker --> AgenticPlatformlocal.CodeSandbox <<Relationship-UmVsYXRpb25zaGlw>> : "Uploads rows + generated code as FILES, executes, reads back, destroys\n<size:16>[HTTP, single-use]</size>"
-PlatformOperator --> AgenticPlatformlocal.GitServer <<Relationship-UmVsYXRpb25zaGlw>> : "Labels an issue to trigger the agent"
-AgenticPlatformlocal.GitServer --> AgenticPlatformlocal.CodingAgentDispatcher <<Relationship-UmVsYXRpb25zaGlw>> : "Webhook on the `agent` label\n<size:16>[HTTP]</size>"
-AgenticPlatformlocal.CodingAgentDispatcher --> AgenticPlatformlocal.GitServer <<Relationship-UmVsYXRpb25zaGlw>> : "Mints a per-run token, pushes the branch, opens the PR, revokes the token\n<size:16>[HTTP]</size>"
 AgenticPlatformlocal.CodingAgentDispatcher --> AgenticPlatformlocal.CodingSandbox <<Relationship-UmVsYXRpb25zaGlw>> : "Claims a sandbox, uploads the task, runs claude -p\n<size:16>[HTTP, single-use]</size>"
 AgenticPlatformlocal.CodingSandbox --> AgenticPlatformlocal.AIGateway <<Relationship-UmVsYXRpb25zaGlw>> : "Anthropic Messages format — the gateway translates to OpenAI and holds the key\n<size:16>[HTTPS]</size>"
-AgenticPlatformlocal.CodingSandbox --> AgenticPlatformlocal.GitServer <<Relationship-UmVsYXRpb25zaGlw>> : "Clones and commits. The WRAPPER pushes; the model never holds the credential\n<size:16>[HTTP]</size>"
 
 @enduml

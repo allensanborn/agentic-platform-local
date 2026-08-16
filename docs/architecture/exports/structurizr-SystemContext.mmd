@@ -8,13 +8,13 @@ graph LR
     style 1 fill:#08427b,stroke:#052e56,color:#ffffff
     2["<div style='font-weight: bold'>Platform Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Runs the cluster and owns the<br />control points.</div>"]
     style 2 fill:#08427b,stroke:#052e56,color:#ffffff
-    3["<div style='font-weight: bold'>Anthropic API</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Frontier model, used only<br />where a local model is not<br />good enough (labs 6-7).</div>"]
+    3["<div style='font-weight: bold'>OpenRouter</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Free-tier frontier-class<br />models. Reached ONLY by the<br />gateway, over direct TLS with<br />certificate verification —<br />there is no cleartext hop and<br />no sandbox ever talks to it.</div>"]
     style 3 fill:#999999,stroke:#6b6b6b,color:#ffffff
     4["<div style='font-weight: bold'>Agentic Platform (local)</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Customer-service agent and<br />the infrastructure that<br />governs it.</div>"]
     style 4 fill:#1168bd,stroke:#0b4884,color:#ffffff
 
     1-. "<div>Asks about an order</div><div style='font-size: 70%'></div>" .->4
     2-. "<div>Changes the model alias table<br />(no agent redeploy)</div><div style='font-size: 70%'></div>" .->4
-    4-. "<div>Same hop, different backend —<br />a config change, not a code<br />change</div><div style='font-size: 70%'>[HTTPS, Anthropic wire format]</div>" .->3
+    4-. "<div>Same hop, different backend —<br />a config change, not a code<br />change. Direct TLS, system<br />trust store, via<br />BackendTLSPolicy</div><div style='font-size: 70%'>[HTTPS]</div>" .->3
 
   end
