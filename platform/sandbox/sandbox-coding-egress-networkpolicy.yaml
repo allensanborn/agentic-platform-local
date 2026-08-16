@@ -1,0 +1,90 @@
+# Coding-sandbox egress lock (labs 6-7) — limit #3 of the four the lab teaches.
+#
+# The sandbox may reach EXACTLY three things:
+#   - cluster DNS (kube-system:53) — without it no other rule is usable
+#   - the Envoy AI Gateway data plane (envoy-gateway-system:80) — the model path
+#   - Gitea (gitea:3000) — clone, push, and the PR API call
+# No internet. No PyPI. No npm registry. No path off the cluster at all, so
+# there is nowhere for model-written code to exfiltrate the repo to, and nowhere
+# for it to pull an unreviewed dependency from.
+#
+# READ THE SELECTOR NOTE BEFORE CHANGING THE podSelector. This is the same trap
+# lab 5 hit and ADR 0006 documents at length: `agents.x-k8s.io/warm-pool-sandbox`
+# is present while the pod sits IDLE in the pool and is REMOVED at claim time
+# (dropping it is how the pod leaves the pool). A policy keyed on it would cover
+# the sandbox for exactly as long as the sandbox is doing nothing and stop
+# covering it the instant it is handed model-generated code. `sandbox-kind` is
+# set by the SandboxTemplate's podTemplate, is not under the controller's
+# reserved prefix, and survives the claim relabel — so it is true for the whole
+# life of the sandbox. Confirmed here the same way lab 5 confirmed it: by running
+# the probe inside a CLAIMED sandbox, with a control pod the policy does not
+# select. See `make coding-egress-check`.
+#
+# NOTE on lab 5's air-gap policy: it selects `sandbox-kind: python`, so it does
+# NOT select these pods. The two pools are disjoint by design — one is
+# air-gapped, one is allow-listed, and each says so in its own selector rather
+# than relying on NetworkPolicy's additive union to sort it out.
+#
+# NOTE on the ipBlock the workshop has and this file does NOT, because it is a
+# real CNI difference and dropping it is a tightening, not an omission. The AI
+# gateway, CoreDNS and Gitea are all reached by SERVICE ClusterIP. Under the AWS
+# VPC CNI a namespaceSelector resolves to destination POD IPs and
+# ClusterIP-destined traffic (the pre-DNAT VIP) never matches such a rule, so the
+# workshop must add `ipBlock: 172.20.0.0/16` (its whole service CIDR) to let the
+# ClusterIP path through at all. That ipBlock is OR'd with the namespaceSelector
+# beside it, so on the workshop's cluster the model path rule really permits
+# *any* service ClusterIP on port 80, not just the gateway's.
+#
+# k3s runs kube-router, which evaluates egress AFTER DNAT — the destination the
+# policy sees is already the backing pod IP. The namespaceSelectors therefore
+# match on their own and the service-CIDR escape hatch is unnecessary. Verified,
+# not assumed: `make coding-egress-check` reaches the gateway and Gitea by
+# ClusterIP with no ipBlock present, and fails to reach anything else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gvisor-coding-egress
+  namespace: agent-sandbox
+spec:
+  podSelector:
+    matchLabels:
+      sandbox-kind: coding
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # The dispatcher reaches the sandbox only THROUGH the router, so ingress is
+    # allowed solely from the sandbox-router pods. The controller's own generated
+    # policy would say this too, except that it selects a label warm-pool pods
+    # never carry and therefore matches zero pods (ADR 0006).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-sandbox-system
+          podSelector:
+            matchLabels:
+              app: sandbox-router
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - protocol: TCP
+          port: 80
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gitea
+      ports:
+        - protocol: TCP
+          port: 3000

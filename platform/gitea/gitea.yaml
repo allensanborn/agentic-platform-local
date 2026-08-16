@@ -1,0 +1,133 @@
+# Gitea — the in-cluster git host for labs 6-7 (module 1000).
+#
+# Workshop original: terraform/gitea.tf installs the Gitea Helm chart 12.1.3
+# (appVersion 1.24.3) with SQLite, a single replica, and its own CloudFront+ALB
+# so a human can reach it over HTTPS.
+#
+# Local port: the same Gitea 1.24.3 image, same SQLite/single-replica footprint,
+# as a plain Deployment instead of the chart. The chart's whole job here is to
+# render one Deployment plus a Service — it also drags in postgresql-ha,
+# redis-cluster and valkey-cluster subcharts that the workshop then explicitly
+# disables. Dropping it removes a Helm dependency and nothing the lab teaches.
+# The CloudFront/ALB hop disappears entirely; a human reaches Gitea through
+# `make gitea-ui` (port-forward), which is why ROOT_URL is a localhost URL.
+#
+# What is preserved exactly: the in-cluster name the agent and the webhook use,
+#     http://gitea-http.gitea.svc.cluster.local:3000
+# which is the string that appears in the dispatcher config, the sandbox's git
+# remote, and the coding-sandbox egress NetworkPolicy. Every one of those is
+# byte-identical to the workshop.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitea
+  labels:
+    # Set automatically by the NamespaceDefaultLabelName admission plugin, but
+    # declared here because the coding-sandbox egress policy selects on it and a
+    # policy whose selector matches nothing is indistinguishable from a policy
+    # that is working (ADR 0006).
+    kubernetes.io/metadata.name: gitea
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitea-data
+  namespace: gitea
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea
+  namespace: gitea
+spec:
+  replicas: 1
+  strategy:
+    # SQLite on a RWO volume: never run two of these at once.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gitea
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gitea
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: gitea
+          image: gitea/gitea:1.24.3-rootless
+          ports:
+            - containerPort: 3000
+              name: http
+            - containerPort: 2222
+              name: ssh
+          env:
+            - name: GITEA__database__DB_TYPE
+              value: sqlite3
+            - name: GITEA__database__PATH
+              value: /var/lib/gitea/data/gitea.db
+            # Human-facing URL. The agent never uses this — it clones from the
+            # ClusterIP name — so a port-forward URL is correct and sufficient.
+            - name: GITEA__server__ROOT_URL
+              value: http://127.0.0.1:3001/
+            - name: GITEA__server__DOMAIN
+              value: 127.0.0.1
+            - name: GITEA__server__HTTP_PORT
+              value: "3000"
+            - name: GITEA__server__SSH_PORT
+              value: "2222"
+            # Skip the web installer: this instance is provisioned by
+            # platform/gitea/provision.sh, not by a human clicking through setup.
+            - name: GITEA__security__INSTALL_LOCK
+              value: "true"
+            - name: GITEA__service__DISABLE_REGISTRATION
+              value: "true"
+            - name: GITEA__service__REQUIRE_SIGNIN_VIEW
+              value: "false"
+            # The dispatcher's webhook target is a private ClusterIP name. Gitea
+            # refuses to POST to private addresses unless they are allow-listed;
+            # the workshop sets the same "*" for the same reason.
+            - name: GITEA__webhook__ALLOWED_HOST_LIST
+              value: "*"
+            # Serve avatars/JS from the image instead of a public CDN. The whole
+            # point of this build is that it works with no internet.
+            - name: GITEA__server__OFFLINE_MODE
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/gitea
+            - name: config
+              mountPath: /etc/gitea
+          readinessProbe:
+            httpGet: { path: /api/healthz, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { memory: "1Gi" }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: gitea-data
+        - name: config
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-http
+  namespace: gitea
+spec:
+  selector:
+    app.kubernetes.io/name: gitea
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

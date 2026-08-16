@@ -133,7 +133,14 @@ spec:
   selector: {app: otel-collector}
   ports:
     - {name: otlp-http, port: 4318, targetPort: 4318}
-    - {name: otlp-grpc, port: 4317, targetPort: 4317}
+    # appProtocol: grpc is load-bearing, not documentation. Envoy Gateway infers the
+    # upstream protocol from it; without it the generated `tracing` cluster carries NO
+    # http2_protocol_options, so Envoy speaks gRPC over HTTP/1.1 and the collector's gRPC
+    # receiver rejects the stream. Symptom set: tracing.opentelemetry.spans_sent increments,
+    # spans_dropped stays 0, the endpoint reports HEALTHY, cluster.tracing shows
+    # internal.upstream_rq_5xx + upstream_cx_destroy_local_with_active_rq, and the collector
+    # logs NOTHING because it never sees a valid gRPC stream. See ADR 0004.
+    - {name: otlp-grpc, port: 4317, targetPort: 4317, appProtocol: grpc}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -169,4 +176,11 @@ spec:
   selector: {app: jaeger}
   ports:
     - {name: ui, port: 16686, targetPort: 16686}
-    - {name: otlp-grpc, port: 4317, targetPort: 4317}
+    # appProtocol: grpc is load-bearing, not documentation. Envoy Gateway infers the
+    # upstream protocol from it; without it the generated `tracing` cluster carries NO
+    # http2_protocol_options, so Envoy speaks gRPC over HTTP/1.1 and the collector's gRPC
+    # receiver rejects the stream. Symptom set: tracing.opentelemetry.spans_sent increments,
+    # spans_dropped stays 0, the endpoint reports HEALTHY, cluster.tracing shows
+    # internal.upstream_rq_5xx + upstream_cx_destroy_local_with_active_rq, and the collector
+    # logs NOTHING because it never sees a valid gRPC stream. See ADR 0004.
+    - {name: otlp-grpc, port: 4317, targetPort: 4317, appProtocol: grpc}

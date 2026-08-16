@@ -69,26 +69,69 @@ policy, and policy belongs at the control point**. One collector rule fixes it f
 workload that will ever stream, which is the same argument lab 4 makes about authorization.
 Result: 543 spans → 9.
 
-## Known gap: the gateway's span does not join the trace
+## The gateway-span gap: mostly fixed, and I had the cause wrong
 
-The workshop's headline detail is that the gateway's `ChatCompletion` span **nests under** the
-agent's trace via `traceparent`, making one turn a single tree across two services. That is
-not reproduced. Diagnostic state, so the next attempt starts informed:
+The original text here said "spans leave Envoy and never land" and pointed at Envoy. That was
+wrong in an instructive way. Three separate things were tangled together.
 
-- Envoy Gateway telemetry **is** configured (`EnvoyProxy.spec.telemetry.tracing`,
-  `samplingRate: 100`, OTLP to the collector) and the controller generates a `tracing` cluster.
-- The cross-namespace `ReferenceGrant` is accepted; the endpoint resolves and reports
-  `eds_health_status: HEALTHY`.
-- Envoy **is** exporting: `tracing.opentelemetry.spans_sent` increments (8 → 12 across one
-  request), `spans_dropped: 0`.
-- But `cluster.tracing.internal.upstream_rq_5xx: 3` and
-  `upstream_cx_destroy_local_with_active_rq: 3` — Envoy tears the connection down mid-request.
-- The collector logs **no** error and receives **no** span with a non-`customer-agent`
-  `service.name`.
+### 1. Transport — FIXED
 
-So spans leave Envoy and never land. Next things to try: OTLP HTTP instead of gRPC; whether
-Envoy's exporter needs a `service.name` resource attribute the collector will accept; and
-whether the collector's gRPC receiver needs `max_recv_msg_size` or compression settings.
+The `tracing` cluster Envoy Gateway generates carried **no `http2_protocol_options`**. OTLP
+gRPC requires HTTP/2, so Envoy was speaking gRPC over HTTP/1.1 and the collector's gRPC
+receiver rejected every stream. That produced a genuinely misleading symptom set: Envoy
+reported `spans_sent` incrementing and `spans_dropped: 0` (it *had* sent them), the endpoint
+showed `eds_health_status: HEALTHY`, and the collector logged nothing at all — because it never
+saw a valid gRPC stream to log about.
+
+The fix is one field, on the collector's **Service**, not on Envoy:
+
+```yaml
+- {name: otlp-grpc, port: 4317, targetPort: 4317, appProtocol: grpc}
+```
+
+Envoy Gateway infers upstream protocol from `appProtocol`. With it, the cluster gains
+`http2_protocol_options`, `cluster.tracing.internal.upstream_rq_5xx` stops incrementing and
+`upstream_rq_2xx` starts, and `envoy-ai-gateway.default` appears in Jaeger. Verified.
+
+### 2. Envoy honours inbound trace context — PROVEN, never the problem
+
+Tested directly by sending a hand-written header through the gateway:
+
+```
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+  -> gateway continued the supplied trace: 4 spans under 4bf92f35...
+```
+
+So the component I spent the most time suspecting was behaving correctly the whole time.
+
+### 3. What actually remains
+
+The agent's *instrumented* httpx does inject the header — confirmed by running the probe the
+way the server runs, under the launcher:
+
+```
+$ kubectl exec deploy/customer-agent -- opentelemetry-instrument python -c '...'
+  traceparent sent? True
+  00-c5798ebff2ae26aaec50206b24450ab3-90bb1fba84063c0c-03
+```
+
+and the gateway adopted exactly that trace id. So agent → gateway propagation works when
+exercised deliberately.
+
+But a real `/chat` turn still produces a `customer-agent` trace and a separate
+`envoy-ai-gateway.default` trace, and the agent trace has **regressed from 9 spans to 2** since
+lab 2 — the rich Strands tree (`invoke_agent` → `execute_event_loop_cycle` → `chat` →
+`execute_tool`) is no longer arriving. Both symptoms appeared after labs 3/5 rewrote `agent.py`
+(session-scoped `MCPClient`, `trace_attributes`, `MODEL_MAX_TOKENS`).
+
+Leading hypothesis, untested: `strands-agents[otel]` installs its own tracer provider, and
+whichever of it and `opentelemetry-instrument` wins the race decides which spans export and
+whether the openai SDK's httpx client is the patched one. Next step is to check for a duplicate
+`TracerProvider` at startup rather than to keep looking at Envoy.
+
+**Do not repeat the mistake this section records.** Three symptoms — no spans in the backend, a
+sender reporting success, a receiver logging nothing — were treated as one fault with one cause.
+They were three faults, and the loudest suspect was innocent.
 
 ## Method note
 

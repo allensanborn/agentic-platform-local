@@ -1,0 +1,63 @@
+# Coding sandbox template (labs 6-7) — the local port of the workshop's
+# manifests/agentsandbox/sandboxtemplate-kata-fc-coding.yaml.
+#
+# Exactly two lines differ from upstream, the same two that differed in lab 5:
+#   runtimeClassName: gvisor   (was kata-fc — this node has no /dev/kvm; ADR 0005)
+#   image: coding-runtime-sandbox:local + imagePullPolicy: Never (k3d side-load)
+#
+# The interesting contrast is with lab 5's gvisor-python template, which sets
+# `egress: []` — total air-gap. This one CANNOT be air-gapped: the coding agent
+# has to reach the model and it has to reach git. So the control changes shape
+# from "nothing" to "exactly two destinations", and the enforcement moves out of
+# the template into sandbox-coding-egress-networkpolicy.yaml. That policy is the
+# whole of limit #3, and it is worth reading alongside this file.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: gvisor-coding
+  namespace: agent-sandbox
+spec:
+  networkPolicyManagement: Managed
+  service: true # headless Service <sandbox-id>.agent-sandbox.svc for the router/SDK
+  podTemplate:
+    metadata:
+      labels:
+        # NON-reserved key on purpose. The controller strips user-supplied labels
+        # under its own agents.x-k8s.io/ prefix, so a reserved key never reaches
+        # the pod; and the one reserved label that IS present on a pooled pod
+        # (agents.x-k8s.io/warm-pool-sandbox) is REMOVED at claim time, which is
+        # exactly the trap ADR 0006 documents. `sandbox-kind` propagates to the
+        # pod and survives the claim relabel, so a policy selecting it covers the
+        # sandbox in both the warm and the claimed state. Do not "simplify" this.
+        sandbox-kind: coding
+    spec:
+      runtimeClassName: gvisor
+      # Inherit CLUSTER DNS. Without this the controller's pod default is
+      # dnsPolicy: None + dnsConfig.nameservers [8.8.8.8, 1.1.1.1] — the sandbox
+      # gets PUBLIC resolvers, cannot resolve *.svc.cluster.local, and git clone
+      # fails with "Could not resolve host". Doubly broken here, since the egress
+      # policy below denies reaching a public resolver at all.
+      dnsPolicy: ClusterFirst
+      automountServiceAccountToken: false # sandbox holds NO K8s credential
+      containers:
+        - name: coding-runtime
+          image: coding-runtime-sandbox:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8888
+          readinessProbe:
+            httpGet:
+              path: "/"
+              port: 8888
+            initialDelaySeconds: 0
+            periodSeconds: 1
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+              ephemeral-storage: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "3Gi"
+              ephemeral-storage: "4Gi"
+      restartPolicy: "OnFailure"

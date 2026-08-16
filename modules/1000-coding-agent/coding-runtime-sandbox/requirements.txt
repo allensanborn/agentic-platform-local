@@ -1,0 +1,17 @@
+# Minimal deps for the agent-sandbox SDK-contract server (main.py). Unlike lab
+# 5's python runtime, the coding sandbox needs no pandas/matplotlib stack — the
+# code work is done by whichever agent in /opt/agents/ the dispatcher selects.
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+
+# The minimal agent (agents/minimal.py) talks to the gateway over HTTP.
+httpx
+
+# Pre-baked so the agent can BUILD AND TEST the seed app OFFLINE. The sandbox
+# egress is locked to DNS + the model gateway + Gitea, so `pip install` inside
+# the sandbox cannot reach an index — anything the seed app's tests need must be
+# in this image. These cover the FastAPI seed repo: pytest as the runner and
+# httpx for fastapi.testclient.TestClient.
+pytest

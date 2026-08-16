@@ -1,0 +1,13 @@
+# Pre-warm coding sandboxes so an issue trigger is not blocked on a cold start.
+# 1 matches the workshop's per-participant setting. The coding runtime image is
+# much larger than lab 5's python runtime (Node + the Claude Code CLI), so the
+# cold-start cost this hides is correspondingly larger.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: gvisor-coding-pool
+  namespace: agent-sandbox
+spec:
+  replicas: 1
+  sandboxTemplateRef:
+    name: gvisor-coding
