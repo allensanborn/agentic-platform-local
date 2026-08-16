@@ -40,6 +40,19 @@
 # match on their own and the service-CIDR escape hatch is unnecessary. Verified,
 # not assumed: `make coding-egress-check` reaches the gateway and Gitea by
 # ClusterIP with no ipBlock present, and fails to reach anything else.
+#
+# THE PORT IS THE OTHER HALF OF THAT SAME FACT, and it bit on the first run.
+# Post-DNAT the policy sees the POD port, not the Service port. Gitea's Service
+# is 3000 -> targetPort 3000, so it happened to work; the AI gateway's is
+# 80 -> targetPort 10080, so a rule allowing only 80 blocked the model path while
+# every other rule looked fine. Both ports are listed below: 10080 is what k3s
+# actually matches, 80 is what the workshop's CNI matches on the pre-DNAT VIP,
+# and keeping both makes the manifest true on either. Nothing in
+# envoy-gateway-system listens on 80, so the extra port grants no access.
+#
+# The general lesson is the same one ADR 0006 draws: an allow rule that matches
+# nothing and a deny are indistinguishable from the outside. The only way to tell
+# them apart is to run the positive case, not just the negative one.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -79,6 +92,10 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: envoy-gateway-system
       ports:
+        # The Envoy data plane's container port (Service 80 -> targetPort 10080).
+        - protocol: TCP
+          port: 10080
+        # The Service port, for a CNI that matches the pre-DNAT ClusterIP:port.
         - protocol: TCP
           port: 80
     - to:

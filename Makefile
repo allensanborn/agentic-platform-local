@@ -191,3 +191,80 @@ sandbox-lifecycle: ## hold a sandbox open 40s and show claim -> run -> destroy -
 
 sandbox-ask:     ## end-to-end through the model: make sandbox-ask USER=ana Q="..."
 	@$(SANDBOX)/ask.sh $(or $(USER_NAME),ana) "$(or $(Q),What were total 2026-Q1 sales aggregated by region?)"
+
+# --- labs 6-7: autonomous coding agent -------------------------------------------------
+CODING := modules/1000-coding-agent
+
+gitea:           ## deploy Gitea + provision bot/repo/label/webhook (idempotent)
+	kubectl apply -f platform/gitea/gitea.yaml
+	./platform/gitea/provision.sh
+
+gitea-ui:        ## port-forward Gitea to :3001 (login printed by `make gitea`)
+	kubectl port-forward -n gitea svc/gitea-http 3001:3000
+
+coding-images:   ## build + side-load the coding runtime and the dispatcher
+	docker build -q -t coding-runtime-sandbox:local $(CODING)/coding-runtime-sandbox
+	docker build -q -t coding-agent-dispatcher:local $(CODING)/coding-agent-dispatcher
+	k3d image import coding-runtime-sandbox:local coding-agent-dispatcher:local -c agentic
+	# Warm-pool pods are pinned to the OLD image id and imagePullPolicy: Never means a
+	# rebuild is invisible until the pool is recycled. Same trap as lab 5.
+	kubectl delete pod -n agent-sandbox -l sandbox-kind=coding --ignore-not-found >/dev/null 2>&1 || true
+
+coding-platform: ## coding sandbox template + warm pool + the egress lock + gateway buffer
+	kubectl apply -f platform/gateway/client-traffic-policy-buffer.yaml
+	kubectl apply -f platform/sandbox/sandboxtemplate-gvisor-coding.yaml
+	kubectl apply -f platform/sandbox/sandboxwarmpool-gvisor-coding.yaml
+	kubectl apply -f platform/sandbox/sandbox-coding-egress-networkpolicy.yaml
+	kubectl apply -f platform/sandbox/router-ingress-networkpolicy.yaml
+
+coding-deploy:   ## the dispatcher (needs `make gitea` first for coding-agent-creds)
+	kubectl apply -f $(CODING)/coding-agent-dispatcher/k8s.yaml
+	kubectl rollout status deploy/coding-agent-dispatcher --timeout=240s
+
+coding: gitea coding-platform coding-images coding-deploy  ## labs 6-7, end to end
+	@echo ""
+	@echo "Labs 6-7 up. Trigger a run:"
+	@echo "  make coding-issue TITLE=\"Add a /health endpoint\" BODY=\"Return {\\\"status\\\": \\\"ok\\\"}.\""
+
+coding-unit:     ## dispatcher unit tests (no cluster needed)
+	cd $(CODING)/coding-agent-dispatcher && { test -d .venv || uv venv --python 3.12 .venv -q; } && \
+	  . .venv/bin/activate && uv pip install -q fastapi httpx pytest && python -m pytest -q
+
+coding-issue:    ## file + label an issue: make coding-issue TITLE="..." BODY="..."
+	@$(CODING)/issue.sh "$(or $(TITLE),Add a /health endpoint)" "$(or $(BODY),Add a GET /health endpoint to app.py returning {\"status\": \"ok\"}. Add a test.)"
+
+coding-show:     ## issue comments + PRs: make coding-show N=1
+	@$(CODING)/show.sh $(or $(N),1)
+
+coding-egress-check: ## THE control: probe from a CLAIMED sandbox + a pod the policy misses
+	@$(CODING)/verify-egress.sh
+
+coding-token-check:  ## mint -> authenticates -> revoke -> 401, plus a residue check
+	@$(CODING)/verify-token.sh $(TOKEN)
+
+coding-watch:    ## follow the dispatcher and the claimed sandbox
+	@kubectl logs -f deploy/coding-agent-dispatcher | grep -v healthz & \
+	 kubectl logs -f -n agent-sandbox -l sandbox-kind=coding --max-log-requests=4 & \
+	 wait
+
+# --- optional: a hosted model behind the same alias table -------------------------------
+model-key:       ## load the OpenRouter key into the cluster (see scripts/set-model-key.sh)
+	./scripts/set-model-key.sh
+	./scripts/model-key-gateway.sh
+
+model-remote:    ## add the OpenRouter backend + `remote-*` aliases to the gateway
+	kubectl apply -f platform/gateway/openrouter-tls-proxy.yaml
+	kubectl rollout status -n model-access deploy/openrouter-tls-proxy --timeout=180s
+	kubectl apply -f platform/gateway/openrouter.yaml
+
+model-remote-test: ## one Anthropic-format call per remote alias, through the gateway
+	@P=$$(kubectl get pod -n gitea -l app.kubernetes.io/name=gitea -o jsonpath='{.items[0].metadata.name}'); \
+	for m in remote-smart remote-fast; do \
+	  printf '%-14s ' "$$m"; \
+	  kubectl exec -n gitea $$P -- curl -sS -X POST \
+	    http://ai-gateway.envoy-gateway-system.svc.cluster.local/anthropic/v1/messages \
+	    -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' \
+	    -H 'x-api-key: not-needed' \
+	    -d "{\"model\":\"$$m\",\"max_tokens\":32,\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK\"}]}" \
+	    | head -c 300; echo; \
+	done

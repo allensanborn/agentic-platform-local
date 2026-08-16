@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx
+# Pinned against the v0.5.0 control plane installed by
+# scripts/install-agent-sandbox.sh. The SDK and the controller share a CRD
+# contract; they move together or not at all (ADR 0006).
+k8s-agent-sandbox==0.5.0

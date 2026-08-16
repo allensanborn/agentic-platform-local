@@ -1,0 +1,125 @@
+# OPTIONAL — a hosted model behind the SAME alias table, for the coding agent.
+#
+# Read platform/gateway/ai-gateway.yaml first: lab 0's thesis is that swapping
+# the model an agent uses is an edit to the gateway's alias table and nothing
+# else. Labs 6-7 are where that stops being a demo and starts being useful,
+# because the local 8B model can drive the minimal agent but cannot drive Claude
+# Code (ADR 0009). Fixing that requires a better model, and this file is the
+# whole fix: a second backend and two new aliases. No agent code, no image, no
+# dispatcher change — `MODEL_MAIN=remote-smart` on the dispatcher Deployment and
+# the coding agent is talking to a hosted model.
+#
+# WHY THIS AND NOT A SIDECAR PROXY. The obvious way to point Claude Code at a
+# non-Anthropic model is a translating proxy (claudish and friends). It is not
+# needed here: Envoy AI Gateway v1.0 already accepts the Anthropic Messages wire
+# format on /anthropic/v1/messages and translates it to whatever the backend
+# speaks — verified against a self-hosted OpenAI backend for text, streaming and
+# tool_use (ADR 0009). Adding a proxy would add a component that has to hold the
+# key, and the gateway already holds it.
+#
+# WHERE THE KEY LIVES, WHICH IS THE POINT. The API key is read by the GATEWAY,
+# from a Kubernetes Secret, at the edge of the cluster. It is never handed to the
+# agent, never written into the sandbox, and never present in any environment the
+# model-generated code can read. The sandbox's egress allowlist does not change:
+# it still reaches exactly the in-cluster gateway and Gitea, and it is the
+# gateway that makes the outbound call. That is limit #2 ("no standing
+# credentials in the sandbox") holding unchanged while the model moves from the
+# same laptop to someone else's datacenter — which is the same property lab 0
+# demonstrates for the Bedrock hop, arriving a second time.
+#
+# Bring-up:
+#   ./scripts/set-model-key.sh      # key -> Secret openrouter/model-access
+#   make model-key-gateway          # -> Secret openrouter-apikey/default (see below)
+#   kubectl apply -f platform/gateway/openrouter.yaml
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: openrouter
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        # NOT openrouter.ai directly: Envoy Gateway cannot originate TLS here.
+        # See platform/gateway/openrouter-tls-proxy.yaml for the whole story.
+        hostname: openrouter-tls-proxy.model-access.svc.cluster.local
+        port: 8080
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: openrouter
+  namespace: default
+spec:
+  schema:
+    # OpenRouter speaks the OpenAI wire format. The Anthropic-format request the
+    # coding agent sends is translated by the gateway, exactly as it is for the
+    # local Ollama backend.
+    name: OpenAI
+    # OpenRouter serves the OpenAI-compatible API at /api/v1, not at /v1. Note
+    # this field REPLACES the version segment rather than prepending to it:
+    # `prefix: /api` produced POST /api/chat/completions (a 404), not
+    # /api/v1/chat/completions. Without the field at all the gateway POSTs
+    # /v1/chat/completions and OpenRouter answers with its marketing homepage —
+    # HTML that the AI Gateway then reports as a response-parse error rather than
+    # as a routing mistake, which is a slow thing to diagnose from the top.
+    prefix: /api/v1
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: openrouter
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: openrouter-key
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openrouter
+  type: APIKey
+  apiKey:
+    # The gateway requires the Secret's key to be literally `apiKey`, which is
+    # not the shape ./scripts/set-model-key.sh writes (`api-key`, in namespace
+    # model-access). `make model-key-gateway` derives this one from that one
+    # rather than asking for the key twice; the human-facing secret keeps its own
+    # shape and stays the single place the key is entered.
+    secretRef:
+      name: openrouter-apikey
+---
+# A SECOND route on the same Gateway, so lab 0's manifest stays untouched. Alias
+# names, not model ids: `remote-smart` is a promise about capability, and which
+# model keeps it is this file's business.
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: remote
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: remote-smart
+      backendRefs:
+        - name: openrouter
+          # A `:free` suffix on OpenRouter costs nothing. Change this line to
+          # change the model the coding agent thinks with. The free catalogue
+          # rotates; `curl .../api/v1/models` through the TLS proxy lists what is
+          # currently free.
+          modelNameOverride: nvidia/nemotron-3-super-120b-a12b:free
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: remote-fast
+      backendRefs:
+        - name: openrouter
+          modelNameOverride: openai/gpt-oss-20b:free

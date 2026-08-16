@@ -2,6 +2,11 @@
 # connection config), so the router runs app-layer-unauthenticated. Access is enforced at
 # the network layer instead: only the code-executor broker (ns default) may reach the
 # router on :8080.
+#
+# Labs 6-7 add a second legitimate client, the coding-agent dispatcher. Both are
+# listed explicitly rather than loosening the selector to "any pod in default":
+# the router vends command execution inside sandboxes, so its ingress list should
+# read as an enumeration of the things allowed to do that.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -21,6 +26,12 @@ spec:
           podSelector:
             matchLabels:
               app: code-executor
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app: coding-agent
       ports:
         - protocol: TCP
           port: 8080

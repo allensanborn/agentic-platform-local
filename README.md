@@ -16,7 +16,7 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 | 3 | MCP tool serving via agentgateway + least privilege | ✅ **working** |
 | 4 | Authorization: Keycloak + deny-by-default per-tool policy | ✅ **working** |
 | 5 | Sandboxed code execution | ✅ **working** (gVisor not Firecracker — [ADR 0005](docs/adr/0005-gvisor-not-kata-firecracker.md)) |
-| 6-7 | Autonomous coding agent | not started |
+| 6-7 | Autonomous coding agent: Gitea issue → sandbox → PR | ✅ **working** ([ADR 0009](docs/adr/0009-coding-agent-is-a-swappable-command.md)) |
 
 **What actually runs today:** a Strands agent answering order questions against a local SQLite database, reaching its model *through the gateway by alias*, streaming SSE with the workshop's exact wire contract.
 
@@ -72,6 +72,41 @@ kernel: 4.19.0-gvisor
 CONTROL connected to 1.1.1.1:443 — the policy, not the runtime, is what blocks the sandbox
 ```
 
+**Labs 6-7 — a labelled issue becomes a pull request, and nobody hands the agent a credential:**
+
+```
+$ make coding-issue TITLE="Add a /version endpoint" BODY="Return {\"version\": \"1.0.0\"}. Add a test."
+filed issue #3 -> labelled 'agent' -> webhook fired
+
+$ make coding-show N=3
+  [coding-agent-bot] 🤖 Working on this in an isolated sandbox…
+  [coding-agent-bot] ✅ Opened PR #4: .../pulls/4
+  #4  Fix issue #3    open <- agent/issue-3   ### Tests passed | 2 passed
+```
+
+The agent commits. The **wrapper** pushes and opens the PR, because the push credential was
+never in the agent's hands. The PR is where a human enters, and the agent's job ends there.
+
+```
+$ make coding-egress-check
+=== inside the CLAIMED sandbox ===
+  [ok  ] REACHED  AI gateway   (sandbox: reach)   ai-gateway.envoy-gateway-system...:80
+  [ok  ] REACHED  Gitea        (sandbox: reach)   gitea-http.gitea...:3000
+  [ok  ] blocked  kube API     (sandbox: block)   kubernetes.default...:443
+  [ok  ] blocked  internet DNS (sandbox: block)   openrouter.ai:443
+  [ok  ] service-account token dir exists: False
+  kernel: 4.19.0-gvisor
+=== CONTROL: same probe, a pod the policy does NOT select ===
+  [ok  ] REACHED  internet DNS (sandbox: block)   openrouter.ai:443
+  [ok  ] service-account token dir exists: True
+
+$ make coding-token-check      # the token the sandbox actually used, after the run
+  after the run, does it authenticate?  HTTP 401
+```
+
+Note `openrouter.ai` blocked while the model calls succeed: the coding agent talks to a
+hosted model, and the API key is held by the **gateway**, never by the sandbox.
+
 ```
 $ python agent.py "My order ID is ORD-1001. Where is it?"
 
@@ -114,6 +149,24 @@ make sandbox-forward  # in another shell: the port-forwards the verification tar
 make sandbox-test     # then see modules/900-sandbox/README.md
 ```
 
+Labs 6-7 (the coding agent) are another separate bring-up, because they install Gitea and a
+second sandbox pool:
+
+```bash
+make gitea            # Gitea + bot account + seed repo + label + webhook (prints logins)
+make coding           # sandbox template/pool, egress lock, images, dispatcher
+make gitea-ui         # in another shell: http://127.0.0.1:3001/
+
+# optional — run the real Claude Code CLI against a free hosted model:
+printf '%s' 'sk-or-v1-...' > .secrets/openrouter.key
+make model-key model-remote model-remote-test
+
+make coding-issue TITLE="Add a /health endpoint" BODY="Return {\"status\": \"ok\"}."
+```
+
+See [modules/1000-coding-agent/README.md](modules/1000-coding-agent/README.md) for the four
+limits and where each one is enforced.
+
 Diagrams: `make diagrams` (see [docs/architecture](docs/architecture/)).
 
 ## Design decisions
@@ -124,6 +177,7 @@ Diagrams: `make diagrams` (see [docs/architecture](docs/architecture/)).
 - [ADR 0005 — gVisor, not Kata + Firecracker](docs/adr/0005-gvisor-not-kata-firecracker.md) — the one substitution lab 5 forces, and exactly what it costs.
 - [ADR 0006 — install upstream agent-sandbox](docs/adr/0006-upstream-agent-sandbox-control-plane.md) — it runs unmodified on arm64/k3s. Includes a real hole found in the workshop's own air-gap NetworkPolicy.
 - [ADR 0007 — `max_tokens` is a per-tool property](docs/adr/0007-tool-call-token-budget.md) — adding a tool whose argument is a whole program is a change to the model config, and the failure is silent.
+- [ADR 0009 — the coding agent is a swappable command](docs/adr/0009-coding-agent-is-a-swappable-command.md) — the AI gateway, not a sidecar proxy, is the Anthropic-compatibility layer; and the lab's four limits are properties of the boundary, not of which agent binary sits inside it.
 
 ## What this cannot do
 

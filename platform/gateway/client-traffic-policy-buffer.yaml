@@ -1,0 +1,38 @@
+# Raise the gateway's client connection buffer limit. Required by labs 6-7.
+#
+# Envoy Gateway's default `connection.bufferLimit` is 32 KiB. Every lab up to 5
+# fits inside that: an agent turn is a short question plus a small tool catalogue.
+# A coding agent does not. Claude Code's first request alone carries its system
+# prompt and ~20 tool schemas, and the AI Gateway's ext_proc filter has to BUFFER
+# the whole body to translate it, so the request is rejected before it ever
+# reaches a model.
+#
+# The failure is worth recording because of how it presents. From inside the
+# sandbox it looks like a model problem:
+#
+#   [claude-code:unrecognized_model] {"model":"local-smart"}
+#   Request too large (max 32MB). Accumulated images and attachments ...
+#
+# Neither sentence is true. There are no images, the limit involved is 32 KiB and
+# not 32 MB, and the model is fine. Claude Code is rendering a bare HTTP 413 from
+# the gateway through its own error vocabulary. Measured directly against the
+# gateway with synthetic bodies, which is what actually located it:
+#
+#     8 KB  -> 200
+#    32 KB  -> 413
+#
+# 4 MiB is chosen to be far above any plausible agent request while still being a
+# bound. This is a gateway-wide change, and it only ever permits a larger request
+# than before, so labs 0-5 are unaffected.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: ai-gateway-buffer
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-ai-gateway
+  connection:
+    bufferLimit: 4Mi

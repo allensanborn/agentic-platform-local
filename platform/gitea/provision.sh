@@ -28,11 +28,23 @@ POD="$(kubectl get pod -n "$NS" -l app.kubernetes.io/name=gitea \
 API="http://gitea-http.${NS}.svc.cluster.local:3000/api/v1"
 
 # --- secrets: generate once, then read back -----------------------------------
-gen() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-24}"; }
+# Random alphanumeric of length $1. Written so no stage of the pipeline is
+# killed by SIGPIPE: the obvious `tr -dc … </dev/urandom | head -c N` makes head
+# exit first, tr dies with 141, and `set -o pipefail` turns that into a silent
+# whole-script abort at the FIRST password generated. (Diagnosed the hard way —
+# the script exited 141 having printed only the rollout line.) Here `head` bounds
+# the read up front and `cut` consumes all of its input, so every stage exits 0.
+gen() {
+  head -c "$(( ${1:-24} * 4 ))" /dev/urandom | base64 | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-"${1:-24}"
+}
 
-read_secret() { # read_secret <ns> <name> <key>  -> value or empty
-  kubectl get secret -n "$1" "$2" -o "jsonpath={.data.$3}" 2>/dev/null \
-    | { read -r b64 || true; [ -n "${b64:-}" ] && printf '%s' "$b64" | base64 -d; }
+# read_secret <ns> <name> <key> -> the decoded value, or empty if absent.
+# The trailing `|| true` is load-bearing under `set -e`: with no such secret the
+# jsonpath is empty, base64 exits non-zero, and the enclosing
+# `VAR="$(read_secret …)"` assignment would take the whole script down on the
+# very first (bootstrap) run.
+read_secret() {
+  kubectl get secret -n "$1" "$2" -o "jsonpath={.data.$3}" 2>/dev/null | base64 -d 2>/dev/null || true
 }
 
 ADMIN_PASS="$(read_secret "$NS" gitea-admin password)";        ADMIN_PASS="${ADMIN_PASS:-$(gen 24)}"
