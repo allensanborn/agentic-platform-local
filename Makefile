@@ -24,7 +24,12 @@ serve: seed      ## FastAPI + SSE on :8081
 	cd $(AGENT) && . .venv/bin/activate && PORT=8081 python server.py
 
 cluster:         ## k3d cluster + Envoy Gateway + Envoy AI Gateway (lab 0)
-	k3d cluster create agentic --agents 1 --wait || true
+	# --disable=traefik: nothing here uses it. k3s ships Traefik by default, which costs 3
+	# pods and — worse — installs its own older Gateway API CRDs alongside Envoy Gateway's,
+	# leaving two versions of the same API group in one cluster. Zero Ingress objects and no
+	# Traefik GatewayClass exist in this stack, so it is pure dead weight.
+	k3d cluster create agentic --agents 1 --wait \
+	  --k3s-arg "--disable=traefik@server:*" || true
 	# The extensionManager block in this values file is REQUIRED and is the whole ballgame:
 	# the AI Gateway controller runs as an Envoy Gateway xDS extension server, and that is
 	# how the ext_proc filter gets injected. Without it every request returns
