@@ -41,9 +41,8 @@ spec:
   endpoints:
     - fqdn:
         # NOT openrouter.ai directly: Envoy Gateway cannot originate TLS here.
-        # See platform/gateway/openrouter-tls-proxy.yaml for the whole story.
-        hostname: openrouter-tls-proxy.model-access.svc.cluster.local
-        port: 8080
+        hostname: openrouter.ai
+        port: 443
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
@@ -123,3 +122,29 @@ spec:
       backendRefs:
         - name: openrouter
           modelNameOverride: openai/gpt-oss-20b:free
+---
+# Direct TLS from the gateway to OpenRouter. This replaced an in-cluster nginx doing TLS
+# origination — a cleartext hop that carried the OpenRouter API key on every request.
+#
+# It existed because Envoy Gateway v1.5.6 watched BackendTLSPolicy at v1alpha3 while the
+# cluster served only v1: the object applied cleanly and was silently ignored, with an empty
+# .status.ancestors as the only tell. Upgrading Envoy Gateway to v1.8.1 fixed it — and v1.8.1
+# is also AI Gateway v1.0.0's documented MINIMUM, so v1.5.6 was never a supported pairing.
+#
+# A cleartext hop for a credential is structurally wrong regardless of blast radius, and this
+# repo exists to demonstrate control points. Teaching the wrong shape would be worse than an
+# incomplete demo.
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: openrouter-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: openrouter
+  validation:
+    # System trust store: the gateway VERIFIES OpenRouter's certificate rather than skipping it.
+    wellKnownCACertificates: System
+    hostname: openrouter.ai

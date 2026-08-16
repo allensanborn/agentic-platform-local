@@ -34,8 +34,16 @@ cluster:         ## k3d cluster + Envoy Gateway + Envoy AI Gateway (lab 0)
 	# the AI Gateway controller runs as an Envoy Gateway xDS extension server, and that is
 	# how the ext_proc filter gets injected. Without it every request returns
 	# "No matching route found" even though every CRD reports Accepted=True. See ADR 0002.
+	# Gateway API v1.5.0 CRDs FIRST. Envoy Gateway v1.8.x watches ListenerSet at
+	# gateway.networking.k8s.io/v1, which only exists in the 1.5.0 bundle; without it the
+	# controller crashloops on `no matches for kind "ListenerSet"`.
+	kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
+	# Envoy Gateway v1.8.1 is AI Gateway v1.0.0's documented MINIMUM (site _vars.json:
+	# egMinVersion 1.8.1). This repo previously ran v1.5.6, which was never a supported
+	# pairing — and is why BackendTLSPolicy was silently ignored (it watched v1alpha3 while
+	# the cluster served v1), forcing a cleartext TLS-origination sidecar.
 	curl -fsSL -o /tmp/eg-values.yaml https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-values.yaml
-	helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm --version v1.5.6 \
+	helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm --version v1.8.1 \
 	  -n envoy-gateway-system --create-namespace -f /tmp/eg-values.yaml
 	helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm --version v1.0.0 \
 	  -n envoy-ai-gateway-system --create-namespace --take-ownership
@@ -258,8 +266,7 @@ model-key:       ## load the OpenRouter key into the cluster (see scripts/set-mo
 	./scripts/model-key-gateway.sh
 
 model-remote:    ## add the OpenRouter backend + `remote-*` aliases to the gateway
-	kubectl apply -f platform/gateway/openrouter-tls-proxy.yaml
-	kubectl rollout status -n model-access deploy/openrouter-tls-proxy --timeout=180s
+	kubectl rollout status -n model-access deploy/openrouter (direct TLS) --timeout=180s
 	kubectl apply -f platform/gateway/openrouter.yaml
 
 model-remote-test: ## one Anthropic-format call per remote alias, through the gateway

@@ -92,4 +92,3 @@ make coding-token-check     # limit 2: mint -> 200 -> revoke -> 401 + residue ch
 - **gVisor, not Kata + Firecracker.** Unchanged from lab 5 — see [ADR 0005](../../docs/adr/0005-gvisor-not-kata-firecracker.md). "A process that escapes the container escapes into a VM" is not true here.
 - **A free hosted model, not Claude on Bedrock.** The agent is the same binary and the wire path is the same shape; the model is weaker and rate-limited. Rate limits are left to fail visibly rather than papered over with retries.
 - **Gitea is a plain Deployment, not the Helm chart, and has no HTTPS front door.** A human reaches it by port-forward. Nothing the lab teaches depends on the CloudFront/ALB hop.
-- **The OpenRouter path crosses one in-cluster hop in cleartext** before TLS starts, because Envoy Gateway cannot originate TLS on this cluster. See `platform/gateway/openrouter-tls-proxy.yaml` for why and what it costs.
