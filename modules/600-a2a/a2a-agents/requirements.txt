@@ -1,0 +1,24 @@
+# Shared build context for all three agents (orchestrator + two specialists), same as the
+# workshop. Dropped from the workshop's list: langfuse (this repo traces via the OTel
+# collector, see ADR 0008), pymilvus + fastembed (ADR 0011 — the product catalog is SQLite
+# FTS5, not a vector store), strands-agents-tools (unused).
+strands-agents[openai,otel]
+# Same pin as every other module here: mcp 2.0 dropped mcp.server.fastmcp, and
+# strands-agents constrains mcp<2 anyway.
+mcp[cli]>=1.10,<2
+# Pinned to the workshop's version. A2AClient.send_message(http_kwargs=...) is the whole
+# reason this module exists; do not float it without re-checking that signature.
+a2a-sdk[http-server]==0.3.26
+fastapi
+uvicorn
+# OpenTelemetry zero-code instrumentation. The `opentelemetry-instrument` launcher patches
+# httpx to propagate W3C traceparent on outbound calls — including the orchestrator's A2A
+# calls — so the whole multi-agent flow lands in ONE trace instead of three disconnected ones.
+#
+# opentelemetry-distro sets OTEL_TRACES_EXPORTER=otlp but bundles no OTLP exporter, so the
+# HTTP one must be installed explicitly or the launcher crashes with "otlp_proto_grpc not
+# found". Paired with OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf in the Dockerfiles.
+opentelemetry-distro
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-instrumentation-httpx
+opentelemetry-instrumentation-fastapi

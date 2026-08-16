@@ -313,6 +313,68 @@ coding-watch:    ## follow the dispatcher and the claimed sandbox
 	 kubectl logs -f -n agent-sandbox -l sandbox-kind=coding --max-log-requests=4 & \
 	 wait
 
+# --- modules 600 + 800: multi-agent A2A -------------------------------------------------
+# The workshop's third hop: agent -> agent. Additive — it reuses the mcp-gateway, Keycloak and
+# the MCP server that are already running, and installs no new infrastructure.
+A2A      := modules/600-a2a
+A2AAGENT := $(A2A)/a2a-agents
+
+a2a-images:      ## build + side-load the orchestrator and both specialists
+	docker build -q -t orchestrator-agent:local -f $(A2AAGENT)/Dockerfile.orchestrator $(A2AAGENT)
+	docker build -q -t order-agent:local        -f $(A2AAGENT)/Dockerfile.order        $(A2AAGENT)
+	docker build -q -t product-agent:local      -f $(A2AAGENT)/Dockerfile.product      $(A2AAGENT)
+	k3d image import orchestrator-agent:local order-agent:local product-agent:local -c agentic
+	# imagePullPolicy: Never pins a running pod to the OLD image id, so a rebuild is invisible
+	# until something restarts it. Same trap as the sandbox warm pools above.
+	kubectl rollout restart deploy/orchestrator-agent deploy/order-agent deploy/product-agent 2>/dev/null || true
+
+a2a-deploy:      ## specialists + the A2A routes + the orchestrator
+	kubectl apply -f $(A2AAGENT)/k8s-specialists.yaml
+	kubectl apply -f $(A2AAGENT)/k8s-orchestrator.yaml
+	kubectl rollout status deploy/order-agent --timeout=240s
+	kubectl rollout status deploy/product-agent --timeout=240s
+	kubectl rollout status deploy/orchestrator-agent --timeout=240s
+
+a2a-authz:       ## module 800 — the authn gate on both A2A routes
+	kubectl apply -f modules/800-a2a-authz/policies/a2a-authn.yaml
+
+a2a: a2a-images a2a-deploy a2a-authz  ## modules 600+800, end to end
+	@echo ""
+	@echo "A2A up. In another shell: make a2a-forward"
+	@echo "  make a2a-verify   # the authorization matrix (model-free)"
+	@echo "  make a2a-hops     # persona propagation across BOTH hops (model-free)"
+	@echo "  make a2a-ask USER_NAME=sam Q=\"Where is order ORD-1001?\""
+
+a2a-forward:     ## port-forwards the A2A probes need, all in one shell (blocks)
+	@echo "gateway :8081   keycloak :8085   orchestrator :8083   order-agent DIRECT :8181"
+	@kubectl port-forward -n agentgateway-system svc/mcp-gateway 8081:80 & \
+	 kubectl port-forward -n identity svc/keycloak 8085:8080 & \
+	 kubectl port-forward svc/orchestrator-agent 8083:8083 & \
+	 kubectl port-forward svc/order-agent 8181:8081 & \
+	 wait
+
+a2a-verify:      ## the authorization matrix at the A2A hop, and the CRD reason for its shape
+	@$(A2A)/verify.sh
+
+a2a-hops:        ## persona propagation across both hops, proven by the discovered tool list
+	@$(A2A)/hops.sh
+
+a2a-bypass:      ## a gate is only a gate if it is the only path: hit the Service directly
+	@echo "=== through agentgateway, no token (expect 401) ==="
+	@python3 $(A2A)/a2a-probe.py --agent order --card || true
+	@echo ""
+	@echo "=== straight at the order-agent Service, no token (expect 200) ==="
+	@python3 $(A2A)/a2a-probe.py --url http://127.0.0.1:8181 --card || true
+
+a2a-ask:         ## end-to-end through the model: make a2a-ask USER_NAME=sam Q="..."
+	@$(A2A)/ask.sh $(or $(USER_NAME),sam) "$(or $(Q),Where is my order ORD-1001?)"
+
+a2a-logs:        ## follow all three agents
+	@kubectl logs -f deploy/orchestrator-agent | grep -v healthz & \
+	 kubectl logs -f deploy/order-agent & \
+	 kubectl logs -f deploy/product-agent & \
+	 wait
+
 # --- optional: a hosted model behind the same alias table -------------------------------
 model-key:       ## load the OpenRouter key into the cluster (see scripts/set-model-key.sh)
 	./scripts/set-model-key.sh

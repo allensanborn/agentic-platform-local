@@ -1,0 +1,22 @@
+# Local port of the workshop Dockerfile.orchestrator. Changes: base image from docker.io
+# rather than public.ecr.aws, and a single stage — the multi-stage copy of site-packages
+# saved nothing here and hid which wheels actually landed.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY orchestrator.py server.py ./
+
+ENV PYTHONUNBUFFERED=1
+# Select the OTLP-HTTP exporter; the distro defaults to the gRPC one we do not install, and
+# the launcher crashes at startup without this.
+ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+EXPOSE 8083
+# opentelemetry-instrument auto-instruments httpx (outbound traceparent) and FastAPI (inbound
+# span). The A2A calls to the specialists are httpx, so they carry traceparent too and the
+# whole three-hop flow shares one trace.
+CMD ["opentelemetry-instrument", "python", "server.py"]

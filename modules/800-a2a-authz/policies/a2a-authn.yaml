@@ -1,0 +1,73 @@
+# Lab 8 — authentication at the agent-to-agent hop.
+#
+# Local port of the workshop's 800-multi-agent-authz/policies/a2a-authn.yaml. The rule itself
+# is byte-identical — `has(jwt.sub)` is scalar, so unlike lab 4 there is not even a claim name
+# to substitute (the workshop's jwt["cognito:groups"] -> jwt["groups"] rewrite has no analogue
+# here, because no claim is being read).
+#
+# ONE STRUCTURAL CHANGE, and it is a version delta rather than an AWS one. The workshop puts
+# the rule at `spec.authorization`. That field does not exist in the agentgateway CRDs this
+# repo runs (agentgateway-crds 1.4.1): `AgentgatewayPolicy.spec` has exactly
+# [backend, frontend, strategy, targetRefs, targetSelectors, traffic], and the HTTP-level
+# authorization block lives at `spec.traffic.authorization`. Left as the workshop wrote it,
+# the field is an unknown one — pruned or rejected depending on field validation, and in the
+# pruned case you get a green-looking policy that gates nothing. That is the same failure
+# shape ADR 0006 and the RUNBOOK keep running into.
+#
+# Lab 4's mcp-authn policy targets the GATEWAY, so these routes are already authenticated the
+# moment they exist. What this adds is the deny-unauthenticated gate: a Require rule that
+# passes only when a validated JWT subject is present.
+#
+# Read the grain carefully, because it is the finding (ADR 0011):
+#
+#   * MCP authz is per TOOL, and the CRD says so in as many words — the description on
+#     `spec.backend.mcp.authorization` reads "List operations, such as list_tools, will have
+#     each item evaluated. Items that do not meet the rule will be filtered." That item-level
+#     evaluation is what makes `check_inventory` invisible rather than refused.
+#   * A2A authz is per ROUTE, and the only predicate worth writing is "is anybody". There is
+#     no `a2a.method`, no `a2a.skill`, no way to say "sam may ask the order agent but not the
+#     product agent". `AgentgatewayBackend.spec` HAS an `a2a` type (host + port), but
+#     `AgentgatewayPolicy.spec.backend` has sub-keys [ai, auth, extAuth, health, http, mcp,
+#     tcp, tls, transformation, tunnel] and no `a2a` — the protocol can be routed and cannot
+#     be governed. Confirm against the schema:
+#         kubectl explain agentgatewaypolicy.spec.backend
+#
+# So the hop where one agent delegates to another is the LEAST governed hop in the stack,
+# which is the opposite of what blast radius argues for.
+#
+# One policy per route: targetRefs takes a single kind/name per HTTPRoute.
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: order-agent-a2a-authn
+  namespace: default
+spec:
+  targetRefs:
+    - kind: HTTPRoute
+      name: order-agent-a2a
+      group: gateway.networking.k8s.io
+  traffic:
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          # Deny-by-default: allowed only when a validated JWT subject is present.
+          - 'has(jwt.sub)'
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: product-agent-a2a-authn
+  namespace: default
+spec:
+  targetRefs:
+    - kind: HTTPRoute
+      name: product-agent-a2a
+      group: gateway.networking.k8s.io
+  traffic:
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          - 'has(jwt.sub)'

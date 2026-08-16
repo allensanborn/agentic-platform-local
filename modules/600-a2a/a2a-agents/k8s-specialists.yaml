@@ -1,0 +1,198 @@
+# Lab 6 — the two specialists, and the A2A routing layer in front of them.
+#
+# Local port of the workshop's k8s-specialists.yaml. Differences, all forced by the
+# environment:
+#   - images are built locally and side-loaded with `k3d image import`; imagePullPolicy: Never
+#   - no serviceAccountName: there is no cloud IAM to bind
+#   - the Gateway is `mcp-gateway`, not `agentgateway`. The Helm chart already owns a
+#     Deployment named `agentgateway` in that namespace and the Gateway controller creates a
+#     data-plane Deployment named after the Gateway; colliding gives an immutable-selector
+#     error that retries forever while the Gateway still reports Programmed=True. Same trap
+#     documented in modules/500-mcp/mcp-server/k8s.yaml.
+#   - MILVUS_URI is gone (ADR 0011); the product catalog is in-process SQLite FTS5.
+#   - agent cards advertise their gateway URL (SELF_URL) rather than their Service URL. The
+#     workshop leaves a TODO there.
+#
+# The routing shape is the workshop's, unchanged: each specialist gets its own
+# AgentgatewayBackend of type `a2a` and its own stably-named HTTPRoute, so a policy can
+# targetRef one specific agent's route. The A2A server serves on the root path, so a
+# URLRewrite strips the /<agent> prefix back to "/".
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: a2a-config
+  namespace: default
+data:
+  # Same model gateway, same alias table as every other agent here. The specialists have no
+  # idea which model answers, and hold no model credential.
+  MODEL_BASE_URL: "http://ai-gateway.envoy-gateway-system.svc.cluster.local/v1"
+  MODEL_ID: "local-smart"
+  MODEL_API_KEY: "not-needed"
+  # qwen3 spends this budget on reasoning BEFORE it emits a tool call (ADR 0003/0007). Here
+  # the "tool call" is the delegation itself, so a starved budget looks like a router that
+  # refuses to route.
+  MODEL_MAX_TOKENS: "6144"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.telemetry.svc.cluster.local:4318"
+  OTEL_LOGS_EXPORTER: "none"
+  OTEL_METRICS_EXPORTER: "none"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-agent
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: order-agent}
+  template:
+    metadata:
+      labels: {app: order-agent}
+    spec:
+      containers:
+        - name: order-agent
+          image: order-agent:local
+          imagePullPolicy: Never
+          ports:
+            - {containerPort: 8081}
+          envFrom:
+            - configMapRef:
+                name: a2a-config
+          env:
+            # The MCP hop. This is the SECOND gateway crossing in the chain, and the one that
+            # still has per-tool authorization (module 700).
+            - name: MCP_SERVER_URL
+              value: "http://mcp-gateway.agentgateway-system.svc.cluster.local/mcp"
+            - name: SELF_URL
+              value: "http://mcp-gateway.agentgateway-system.svc.cluster.local/order-agent"
+            - name: OTEL_SERVICE_NAME
+              value: "order-agent"
+          resources:
+            requests: {cpu: "256m", memory: "512Mi"}
+            limits: {cpu: "1", memory: "1Gi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-agent
+  namespace: default
+spec:
+  selector: {app: order-agent}
+  ports:
+    - port: 8081
+      targetPort: 8081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-agent
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: product-agent}
+  template:
+    metadata:
+      labels: {app: product-agent}
+    spec:
+      containers:
+        - name: product-agent
+          image: product-agent:local
+          imagePullPolicy: Never
+          ports:
+            - {containerPort: 8082}
+          envFrom:
+            - configMapRef:
+                name: a2a-config
+          env:
+            - name: SELF_URL
+              value: "http://mcp-gateway.agentgateway-system.svc.cluster.local/product-agent"
+            - name: OTEL_SERVICE_NAME
+              value: "product-agent"
+          resources:
+            requests: {cpu: "256m", memory: "512Mi"}
+            limits: {cpu: "1", memory: "1Gi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-agent
+  namespace: default
+spec:
+  selector: {app: product-agent}
+  ports:
+    - port: 8082
+      targetPort: 8082
+---
+# Note what is NOT on these Services: `appProtocol: agentgateway.dev/mcp`. An `a2a` backend
+# does not need it — the backend type is declared here instead.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: order-agent-backend
+  namespace: default
+spec:
+  a2a:
+    host: order-agent.default.svc.cluster.local
+    port: 8081
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: order-agent-a2a
+  namespace: default
+spec:
+  parentRefs:
+    - name: mcp-gateway
+      namespace: agentgateway-system
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /order-agent
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: order-agent-backend
+          group: agentgateway.dev
+          kind: AgentgatewayBackend
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: product-agent-backend
+  namespace: default
+spec:
+  a2a:
+    host: product-agent.default.svc.cluster.local
+    port: 8082
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: product-agent-a2a
+  namespace: default
+spec:
+  parentRefs:
+    - name: mcp-gateway
+      namespace: agentgateway-system
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /product-agent
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: product-agent-backend
+          group: agentgateway.dev
+          kind: AgentgatewayBackend

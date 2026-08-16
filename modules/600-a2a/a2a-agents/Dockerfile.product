@@ -1,0 +1,17 @@
+# Local port of the workshop Dockerfile.product. The workshop's build step that pre-baked a
+# ~90 MB fastembed sentence-transformer into the image is GONE: search_products is SQLite FTS5
+# over products.json now, so the catalog ships as a 3 KB file instead. See ADR 0011.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY product_agent.py products.json ./
+
+ENV PYTHONUNBUFFERED=1
+ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+EXPOSE 8082
+CMD ["opentelemetry-instrument", "python", "product_agent.py"]

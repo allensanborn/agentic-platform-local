@@ -1,0 +1,59 @@
+# Lab 6 — the orchestrator.
+#
+# Local port of the workshop's k8s-orchestrator.yaml. Same substitutions as the specialists
+# (local image, no ServiceAccount, mcp-gateway not agentgateway).
+#
+# The two URLs below are the whole routing story: the orchestrator does NOT dial the
+# specialists' Services. It dials agentgateway path prefixes, so there is a policy enforcement
+# point in the middle of an agent-to-agent call. Whether that enforcement point can express
+# anything useful is module 800's question, and the answer is "less than you would expect" —
+# ADR 0011.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator-agent
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: orchestrator-agent}
+  template:
+    metadata:
+      labels: {app: orchestrator-agent}
+    spec:
+      containers:
+        - name: orchestrator-agent
+          image: orchestrator-agent:local
+          imagePullPolicy: Never
+          ports:
+            - {containerPort: 8083}
+          envFrom:
+            - configMapRef:
+                name: a2a-config
+          env:
+            - name: ORDER_AGENT_URL
+              value: "http://mcp-gateway.agentgateway-system.svc.cluster.local/order-agent"
+            - name: PRODUCT_AGENT_URL
+              value: "http://mcp-gateway.agentgateway-system.svc.cluster.local/product-agent"
+            - name: OTEL_SERVICE_NAME
+              value: "orchestrator-agent"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8083
+            initialDelaySeconds: 3
+          resources:
+            requests: {cpu: "256m", memory: "512Mi"}
+            limits: {cpu: "1", memory: "1Gi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-agent
+  namespace: default
+spec:
+  selector: {app: orchestrator-agent}
+  ports:
+    - port: 8083
+      targetPort: 8083

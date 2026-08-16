@@ -1,0 +1,16 @@
+# Local port of the workshop Dockerfile.order. Same shared requirements.txt as the other two
+# agents; only the entrypoint differs.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY order_agent.py .
+
+ENV PYTHONUNBUFFERED=1
+ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+EXPOSE 8081
+CMD ["opentelemetry-instrument", "python", "order_agent.py"]
