@@ -69,7 +69,8 @@ Sketch (Langfuse public API, HTTP Basic over `pk-lf-agentic-platform-local:sk-lf
 def wait_for_trace(session_id, timeout=60):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        r = get("/api/public/v2/traces", params={"sessionId": session_id})
+        # v1, NOT v2: /api/public/v2/traces is 404 on Langfuse 3.x — see the correction below.
+        r = get("/api/public/traces", params={"sessionId": session_id})
         if r["data"]:
             return r["data"][0]["id"]
         time.sleep(2)
@@ -78,7 +79,7 @@ def wait_for_trace(session_id, timeout=60):
 def test_gateway_spans_nest_under_the_agent_trace():
     sid = f"eval-{uuid4()}"
     ask(user="ana", question="My order ID is ORD-1001. Where is it?", session_id=sid)
-    obs = get(f"/api/public/v2/traces/{wait_for_trace(sid)}")["observations"]
+    obs = get(f"/api/public/traces/{wait_for_trace(sid)}")["observations"]
 
     by_id = {o["id"]: o for o in obs}
     def ancestors(o):
@@ -114,6 +115,28 @@ That is roughly forty lines of pytest and one dependency (`httpx`). Six pitfalls
 - **The negative assertion matters most.** ADR 0004 records that this exact property was believed broken for a while, and that the diagnosis was wrong twice. The assertion that catches the real regression is "an Envoy span exists *and is a descendant*" — two disconnected trees is the failure mode, and a naive "the trace has spans from two services" check passes in that broken state.
 
 Two API details to build behind a one-function adapter: auth is HTTP Basic with the public key as username and the secret key as password ([langfuse.com/docs/api](https://langfuse.com/docs/api)), and **`GET /api/public/traces/{traceId}` is deprecated with a stated removal date of 2026-11-16**, superseded by `GET /api/public/v2/observations?traceId=…`. On that v2 endpoint the `core` field group always includes `parentObservationId`, but `name` lives in `basic` — request `fields=core,basic`.
+
+> **Corrected 2026-08-16 — measured against the running deployment (`langfuse/langfuse:3`, 3.225.2). The `v2` endpoints above DO NOT EXIST here, and the pseudocode in this ADR calls two of them.** Probed with the seeded project keys:
+>
+> | endpoint | status |
+> |---|---|
+> | `/api/public/v2/traces` | **404** |
+> | `/api/public/v2/observations` | **404** |
+> | `/api/public/traces` | 200 |
+> | `/api/public/observations` | 200 |
+> | `/api/public/sessions` | 200 |
+> | `/api/public/scores` | 200 |
+> | `/api/public/v2/scores` | 200 |
+> | `/api/public/v2/prompts` | 200 |
+>
+> On Langfuse 3.x the `v2` prefix exists only for **prompts** and **scores**. Traces and observations are v1-only. The 200s prove the credentials and Basic auth are correct, so the 404s are genuinely "no such route", not an auth artefact.
+>
+> Consequences for the implementer:
+> - The pseudocode's `get("/api/public/v2/traces", …)` and `get(f"/api/public/v2/traces/{id}")` must become `/api/public/traces` and `/api/public/traces/{id}`.
+> - `fields=core,basic` is a v2-only parameter and does not apply. Do not send it.
+> - The deprecation note is still accurate as *upstream direction*, but the replacement is not available in the version we run. The one-function adapter this ADR already recommends is what absorbs that — build it, and pin the version it was verified against.
+>
+> This is the second time in this repo that an API shape was taken from documentation describing a different version than the one deployed (see the Envoy Gateway v1.5.6-vs-v1.8.1 `BackendTLSPolicy` `v1alpha3`/`v1` mismatch in ADR 0010). Probe the running server before writing the client.
 
 A cheap **tier-0 companion** worth adding at the same time: an in-process pytest using `InMemorySpanExporter` inside the agent, asserting that the `/chat` server span parents the outbound HTTP client span and that the injected `traceparent` carries the same trace ID. It cannot see Envoy — so it cannot test the lab-2 property — but it catches most propagation regressions in milliseconds with no cluster at all.
 

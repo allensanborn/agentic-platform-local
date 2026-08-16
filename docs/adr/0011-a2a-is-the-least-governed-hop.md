@@ -109,15 +109,38 @@ changes.
 The workshop's `800-multi-agent-authz/policies/a2a-authn.yaml` puts the rule at
 **`spec.authorization`**. That field **does not exist** in `AgentgatewayPolicy` v1alpha1 as
 shipped in agentgateway-crds 1.4.1; the HTTP-level block is `spec.traffic.authorization`. The
-spec schema is structural, with no `x-kubernetes-preserve-unknown-fields`, so the workshop's
-document is an unknown-field write: rejected under strict field validation, **silently pruned**
-under the permissive kind — leaving an `AgentgatewayPolicy` object that exists, reports no error,
-and gates nothing.
+spec schema is structural, with no `x-kubernetes-preserve-unknown-fields`.
 
-That is the third time this repo has been bitten by the same shape (ADR 0010's ignored
-`BackendTLSPolicy`; the stale ConfigMap behind a broken YAML comment). The local port uses
-`spec.traffic.authorization`. Whether the workshop is written against a newer or older CRD, or
-is simply wrong, is not determinable from here.
+**Corrected 2026-08-16 — this paragraph previously claimed the manifest was "silently pruned
+under the permissive kind, leaving an `AgentgatewayPolicy` object that exists, reports no error,
+and gates nothing." That was reasoning from the schema shape, and it was wrong.** Measured, the
+manifest is REJECTED under both validation paths:
+
+```
+$ kubectl apply --dry-run=server -f .../a2a-authn.yaml           # strict (kubectl >=1.27 default)
+Error from server (BadRequest): ... strict decoding error: unknown field "spec.authorization"
+
+$ kubectl apply --dry-run=server --validate=ignore -f .../a2a-authn.yaml   # the pruning path
+Error from server (Invalid): spec: Invalid value: At least one of traffic, frontend, or
+backend must be provided.
+```
+
+The pruning path is backstopped by a CEL validation rule on the CRD: once the unknown field is
+pruned the remaining spec is empty, and empty fails the required-oneof. There is no way to end up
+with an object that exists and gates nothing — it fails closed, loudly, both ways.
+
+This is therefore a **correctness / bit-rot defect, not a security hazard**. Lab 800 cannot be
+followed as written, but nobody is misled into believing a gate is enforced. Only defect #1 (the
+air-gap NetworkPolicy selector) is fail-open. The local port uses `spec.traffic.authorization`.
+Whether the workshop is written against a newer or older CRD, or is simply wrong, is not
+determinable from here.
+
+The correction is the more useful finding. This was filed as the third instance of a pattern
+(ADR 0010's ignored `BackendTLSPolicy`; the stale ConfigMap behind a broken YAML comment) when it
+is not an instance of it at all — those two really did fail silently, this one never could.
+Predicting admission behaviour from a CRD's schema shape is not the same as running it: "structural
+schema with no preserve-unknown-fields implies silent pruning" is a sound general rule that a CEL
+rule on this particular CRD invalidates.
 
 ## Consequences
 
