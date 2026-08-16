@@ -1,5 +1,17 @@
 AGENT := modules/200-agent/customer-agent
 ORDERS_DB := $(CURDIR)/data/orders.db
+
+# The k3d cluster name. Overridable so a COLD START can be tested without destroying a
+# working cluster:
+#     make up-all CLUSTER=agentic-coldtest
+#     make down   CLUSTER=agentic-coldtest
+# A full cold start is the only real test of this Makefile's ordering constraints, and while
+# this name was hardcoded that test could only be run by deleting the one working environment
+# — so it kept being deferred. Note the node hostname k3d derives from it
+# (k3d-$(CLUSTER)-agent-0) is read by the gvisor check, hence the substitution there too.
+# Caveat: two clusters plus two Langfuse stacks may not fit in memory at once. This makes the
+# option exist; it does not promise both run side by side.
+CLUSTER ?= agentic
 export MODEL_BASE_URL ?= http://localhost:11434/v1
 export MODEL_ID       ?= qwen3:8b
 export MODEL_API_KEY  ?= not-needed
@@ -29,7 +41,7 @@ cluster:         ## k3d cluster + Envoy Gateway + Envoy AI Gateway (lab 0)
 	# pods and — worse — installs its own older Gateway API CRDs alongside Envoy Gateway's,
 	# leaving two versions of the same API group in one cluster. Zero Ingress objects and no
 	# Traefik GatewayClass exist in this stack, so it is pure dead weight.
-	k3d cluster create agentic --agents 1 --wait \
+	k3d cluster create $(CLUSTER) --agents 1 --wait \
 	  --k3s-arg "--disable=traefik@server:*" || true
 	# The extensionManager block in this values file is REQUIRED and is the whole ballgame:
 	# the AI Gateway controller runs as an Envoy Gateway xDS extension server, and that is
@@ -69,7 +81,7 @@ gateway:         ## apply the lab-0 gateway manifests (see ADR 0002 — not yet 
 	kubectl apply -f platform/gateway/ai-gateway.yaml
 
 clean:
-	k3d cluster delete agentic || true
+	k3d cluster delete $(CLUSTER) || true
 
 # --- architecture diagrams (C4 via Structurizr, Tier 1 headless Docker) -------------
 DIAG := docs/architecture
@@ -93,7 +105,7 @@ images:          ## build the three app images and side-load them into k3d
 	docker build -q -t customer-agent:local modules/200-agent/customer-agent
 	docker build -q -t chat-ui:local modules/300-ui/chat-ui
 	docker build -q -t mcp-server:local modules/500-mcp/mcp-server
-	k3d image import customer-agent:local chat-ui:local mcp-server:local -c agentic
+	k3d image import customer-agent:local chat-ui:local mcp-server:local -c $(CLUSTER)
 
 # agentgateway install. CRDs FIRST — installing the control plane before its CRDs makes it
 # crashloop on `Unauthorized`, because its ClusterRole is generated against types that do not
@@ -162,7 +174,7 @@ ui:              ## port-forward the chat UI to :8000
 	kubectl port-forward svc/chat-ui 8000:8000
 
 down:            ## delete the cluster
-	k3d cluster delete agentic
+	k3d cluster delete $(CLUSTER)
 
 # --- lab 5: sandbox runtime -----------------------------------------------------------
 gvisor:          ## install gVisor (runsc) into the k3d node + register the RuntimeClass
@@ -173,7 +185,7 @@ sandbox-verify:  ## prove the sandbox has its own kernel (the workshop's own che
 	@kubectl run gvisor-smoke --image=busybox:1.36 --restart=Never \
 	  --overrides='{"spec":{"runtimeClassName":"gvisor"}}' --command -- sh -c 'uname -r' >/dev/null
 	@sleep 12
-	@echo "node kernel:    $$(docker exec k3d-agentic-agent-0 uname -r)"
+	@echo "node kernel:    $$(docker exec k3d-$(CLUSTER)-agent-0 uname -r)"
 	@echo "sandbox kernel: $$(kubectl logs gvisor-smoke 2>/dev/null)"
 	@kubectl delete pod gvisor-smoke --ignore-not-found >/dev/null 2>&1 || true
 
@@ -187,7 +199,7 @@ sandbox-platform: ## install upstream agent-sandbox v0.5.0 + the gVisor template
 sandbox-images:  ## build + side-load the sandbox runtime and the broker
 	docker build -q -t python-runtime-sandbox:local $(SANDBOX)/python-runtime-sandbox
 	docker build -q -t code-executor-mcp:local $(BROKER)
-	k3d image import python-runtime-sandbox:local code-executor-mcp:local -c agentic
+	k3d image import python-runtime-sandbox:local code-executor-mcp:local -c $(CLUSTER)
 	# The warm pool holds pods pinned to the OLD image id; imagePullPolicy: Never means a
 	# rebuild is invisible until the pool is recycled. Delete and let the controller refill.
 	kubectl delete pod -n agent-sandbox --all --ignore-not-found >/dev/null 2>&1 || true
@@ -271,7 +283,7 @@ gitea-ui:        ## port-forward Gitea to :3001 (login printed by `make gitea`)
 coding-images:   ## build + side-load the coding runtime and the dispatcher
 	docker build -q -t coding-runtime-sandbox:local $(CODING)/coding-runtime-sandbox
 	docker build -q -t coding-agent-dispatcher:local $(CODING)/coding-agent-dispatcher
-	k3d image import coding-runtime-sandbox:local coding-agent-dispatcher:local -c agentic
+	k3d image import coding-runtime-sandbox:local coding-agent-dispatcher:local -c $(CLUSTER)
 	# Warm-pool pods are pinned to the OLD image id and imagePullPolicy: Never means a
 	# rebuild is invisible until the pool is recycled. Same trap as lab 5.
 	kubectl delete pod -n agent-sandbox -l sandbox-kind=coding --ignore-not-found >/dev/null 2>&1 || true
@@ -323,7 +335,7 @@ a2a-images:      ## build + side-load the orchestrator and both specialists
 	docker build -q -t orchestrator-agent:local -f $(A2AAGENT)/Dockerfile.orchestrator $(A2AAGENT)
 	docker build -q -t order-agent:local        -f $(A2AAGENT)/Dockerfile.order        $(A2AAGENT)
 	docker build -q -t product-agent:local      -f $(A2AAGENT)/Dockerfile.product      $(A2AAGENT)
-	k3d image import orchestrator-agent:local order-agent:local product-agent:local -c agentic
+	k3d image import orchestrator-agent:local order-agent:local product-agent:local -c $(CLUSTER)
 	# imagePullPolicy: Never pins a running pod to the OLD image id, so a rebuild is invisible
 	# until something restarts it. Same trap as the sandbox warm pools above.
 	kubectl rollout restart deploy/orchestrator-agent deploy/order-agent deploy/product-agent 2>/dev/null || true
