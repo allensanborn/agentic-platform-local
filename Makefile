@@ -99,7 +99,39 @@ deploy:          ## apply the app manifests
 	kubectl rollout status deploy/customer-agent --timeout=180s
 	kubectl rollout status deploy/chat-ui --timeout=180s
 
-up: cluster images deploy  ## cluster + gateway + images + deploy, end to end
+identity:        ## Keycloak + the anycompany realm (two personas: sam, ana)
+	kubectl create namespace identity --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create configmap keycloak-realm -n identity \
+	  --from-file=realm-anycompany.json=platform/identity/realm-anycompany.json \
+	  --dry-run=client -o yaml | kubectl apply -f -
+	kubectl apply -f platform/identity/keycloak.yaml
+	kubectl rollout status -n identity deploy/keycloak --timeout=400s
+
+observability:   ## OTel collector + Langfuse (~1.6 GiB; see ADR 0008)
+	kubectl apply -f platform/observability/langfuse/
+	kubectl apply -f platform/observability/otel-collector.yaml
+	kubectl apply -f platform/observability/gateway-trace-refgrant.yaml
+	kubectl rollout status -n langfuse deploy/langfuse-web --timeout=600s
+	kubectl rollout status -n telemetry deploy/otel-collector --timeout=180s
+
+# Full cold start, in dependency order. The ORDER is not cosmetic:
+#   - Gateway API CRDs must exist before Envoy Gateway (it watches ListenerSet at v1)
+#   - CRD charts before control planes (agentgateway crashloops on Unauthorized otherwise)
+#   - gvisor before ANY sandbox pod schedules; it restarts the k3d agent node
+#   - gitea before coding-deploy (the dispatcher needs the coding-agent-creds Secret)
+# On an ALREADY-RUNNING cluster prefer the sub-targets: `make gvisor` restarts a node and is
+# disruptive mid-session.
+up-all: cluster gvisor sandbox-platform observability identity gitea images deploy \
+        sandbox-images sandbox-deploy coding-images coding-platform coding-deploy
+	@echo ""
+	@echo "Cold start complete. Remaining manual steps:"
+	@echo "  make model            # ollama pull qwen3:8b llama3.2:1b (~6.5GB, one time)"
+	@echo "  make serve-model      # Ollama bound to 0.0.0.0 so the cluster can reach it"
+	@echo "  make model-key        # only if using OpenRouter (see scripts/set-model-key.sh)"
+	@echo "  make model-remote     # adds the remote-* aliases"
+	@echo "  make ui               # then open http://127.0.0.1:8000"
+
+up: cluster images deploy  ## labs 0-1 only. For everything, use `make up-all`
 	@echo ""
 	@echo "Ready. Start the model and open the UI:"
 	@echo "  make serve-model     # in another shell, if ollama isn't already running"

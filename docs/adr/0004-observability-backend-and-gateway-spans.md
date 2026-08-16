@@ -104,34 +104,38 @@ traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 
 So the component I spent the most time suspecting was behaving correctly the whole time.
 
-### 3. What actually remains
+### 3. RESOLVED — the trace does join
 
-The agent's *instrumented* httpx does inject the header — confirmed by running the probe the
-way the server runs, under the launcher:
+Verified 2026-08-16 against Langfuse. One `/chat` turn produces **one trace with 26
+observations**, containing both services:
 
 ```
-$ kubectl exec deploy/customer-agent -- opentelemetry-instrument python -c '...'
-  traceparent sent? True
-  00-c5798ebff2ae26aaec50206b24450ab3-90bb1fba84063c0c-03
+POST /chat                                      [agent, FastAPI]
+  invoke_agent Strands Agents
+    execute_event_loop_cycle  x2
+      chat  x2
+    lookup_order
+  ingress                                   x2  [Envoy]
+  router httproute/default/local/rule/1 egress  x2  [Envoy]
+  async envoy.service.ext_proc.v3.ExternalProcessor.Process egress  x4  [AI Gateway extproc]
 ```
 
-and the gateway adopted exactly that trace id. So agent → gateway propagation works when
-exercised deliberately.
+That is the workshop's headline lab-2 property — the gateway's work nesting under the agent's
+trace via `traceparent` — reproduced in full.
 
-But a real `/chat` turn still produces a `customer-agent` trace and a separate
-`envoy-ai-gateway.default` trace, and the agent trace has **regressed from 9 spans to 2** since
-lab 2 — the rich Strands tree (`invoke_agent` → `execute_event_loop_cycle` → `chat` →
-`execute_tool`) is no longer arriving. Both symptoms appeared after labs 3/5 rewrote `agent.py`
-(session-scoped `MCPClient`, `trace_attributes`, `MODEL_MAX_TOKENS`).
+**It was fixed by the `appProtocol: grpc` change in part 1.** Nothing else was needed. Two
+earlier claims in this ADR were wrong and are withdrawn:
 
-Leading hypothesis, untested: `strands-agents[otel]` installs its own tracer provider, and
-whichever of it and `opentelemetry-instrument` wins the race decides which spans export and
-whether the openai SDK's httpx client is the patched one. Next step is to check for a duplicate
-`TracerProvider` at startup rather than to keep looking at Envoy.
+- *"the agent trace regressed from 9 spans to 2."* It did not. I was reading Jaeger, which was
+  later deleted, and querying stale traces. The live trace has 26 observations.
+- *"leading hypothesis: `strands-agents[otel]` installs its own TracerProvider and races
+  `opentelemetry-instrument`."* It does not. `strands.telemetry.tracer` calls
+  `trace_api.get_tracer_provider()` and never constructs or sets one, so there is no race.
 
-**Do not repeat the mistake this section records.** Three symptoms — no spans in the backend, a
-sender reporting success, a receiver logging nothing — were treated as one fault with one cause.
-They were three faults, and the loudest suspect was innocent.
+**The compounding error worth naming:** I declared an open gap, wrote a hypothesis for it, and
+carried it in an ADR — all while measuring against a backend I had since removed from the
+cluster. Re-verify a "known gap" before writing the next theory about it, especially after
+changing the thing you measure with.
 
 ## Method note
 

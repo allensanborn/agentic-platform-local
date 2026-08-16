@@ -1,6 +1,16 @@
 # ADR 0009 — the coding agent is a swappable command, and the gateway is the compatibility layer
 
 **Status:** accepted
+
+> **Retracted in part (see ADR 0010).** This ADR attributes the OpenRouter cleartext hop to
+> k3s's Traefik owning the Gateway API CRDs. That was wrong. The real cause was an apiVersion
+> mismatch: Envoy Gateway v1.5.6 watched `BackendTLSPolicy` at `v1alpha3` while the cluster
+> served only `v1`, so the policy applied cleanly and was silently ignored. Removing Traefik
+> did not fix it; upgrading Envoy Gateway to v1.8.1 did — and v1.8.1 is AI Gateway v1.0.0's
+> documented **minimum**, so v1.5.6 was never a supported pairing in the first place. The hop
+> and its nginx sidecar are gone. The original reasoning is kept below because the way it
+> failed is the instructive part: the component that had caused trouble before got blamed
+> again.
 **Date:** 2026-08-16
 
 ## Context
