@@ -1,7 +1,18 @@
 # ADR 0010 — Drop Traefik; and the cleartext hop is a version gap, not Traefik's fault
 
-**Status:** accepted (Traefik removed); the TLS hop stays, with a documented upgrade path
+**Status:** accepted (Traefik removed); **the TLS hop is gone — option 1 was taken**
 **Date:** 2026-08-16
+
+> **Update.** The "Options" section below still reads as if the cleartext hop stays. It does not.
+> Envoy Gateway was upgraded to **v1.8.1** — AI Gateway v1.0.0's documented minimum, so v1.5.6
+> was never a supported pairing — which required the **Gateway API v1.5.0** CRD bundle first,
+> because EG v1.8.x watches `ListenerSet` at `gateway.networking.k8s.io/v1`. `make cluster`
+> installs both, in that order. The nginx TLS-origination sidecar
+> (`platform/gateway/openrouter-tls-proxy.yaml`) was deleted;
+> `platform/gateway/openrouter.yaml` now carries a `BackendTLSPolicy` with
+> `wellKnownCACertificates: System`, so the gateway originates TLS to OpenRouter directly and
+> verifies the certificate. The reasoning below is kept because the *cost* of option 1 was
+> stated honestly before it was paid.
 
 ## Traefik is removed
 

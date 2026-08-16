@@ -6,6 +6,11 @@ The workshop's thesis is that every capability arrives as **a control point in i
 
 Full feasibility evaluation, including the AWS-coupling analysis and what each lab costs to reproduce, lives in the companion wiki at `wiki/homelab-agentic-platform-plan.md`.
 
+**Two documents carry the rest of this repo:**
+
+- **[docs/RUNBOOK.md](docs/RUNBOOK.md)** — clone to working demo. Prerequisites, the cold-start order and why it is not cosmetic, the manual steps `up-all` deliberately leaves out, how to verify each lab, where a step is slow rather than hung, and teardown.
+- **[docs/TALK.md](docs/TALK.md)** — the substitution table as an argument. Lab by lab, what each substitution preserves and what it costs, including the parts that failed: the fail-open air-gap policy in the workshop's own design, what gVisor gives up against Firecracker, and a sizing claim that was retracted after being measured.
+
 ## Status
 
 | Lab | Component | Status |
@@ -13,10 +18,12 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 | 0 | Model gateway (Envoy AI Gateway → Ollama), alias table | ✅ **working** |
 | 1 | Strands agent + `lookup_order` tool + SSE + Chainlit UI, all in-cluster | ✅ **working** |
 | 2 | Observability: OTel + collector → **Langfuse** | ✅ **working** — one `/chat` turn is a single 26-observation trace spanning agent *and* gateway |
-| 3 | MCP tool serving via agentgateway + least privilege | ✅ **working** |
-| 4 | Authorization: Keycloak + deny-by-default per-tool policy | ✅ **working** |
+| 3 | MCP tool serving via agentgateway + least privilege | ✅ **working**, ⚠️ **not automated** — see below |
+| 4 | Authorization: Keycloak + deny-by-default per-tool policy | ✅ **working**, ⚠️ **not automated** — see below |
 | 5 | Sandboxed code execution | ✅ **working** (gVisor not Firecracker — [ADR 0005](docs/adr/0005-gvisor-not-kata-firecracker.md)) |
 | 6-7 | Autonomous coding agent: Gitea issue → sandbox → PR | ✅ **working** ([ADR 0009](docs/adr/0009-coding-agent-is-a-swappable-command.md)) |
+
+⚠️ **Labs 3 and 4 have complete manifests and no Makefile target.** `make images` does not build `mcp-server:local`, `make deploy` applies neither `modules/500-mcp/mcp-server/k8s.yaml` nor `modules/700-authz/policies/step3-differentiate.yaml`, and nothing in this repo installs the agentgateway control plane — those steps were run by hand and never scripted. Since lab 3 the agent discovers its tools over MCP instead of importing them, so a cluster built from `make up-all` alone gives you an agent with **zero tools**. [docs/RUNBOOK.md](docs/RUNBOOK.md#labs-3-and-4--the-manual-part) has the manual sequence.
 
 **What actually runs today:** a Strands agent answering order questions against a local SQLite database, reaching its model *through the gateway by alias*, streaming SSE with the workshop's exact wire contract.
 
@@ -131,38 +138,50 @@ The dataset is the workshop's own 500 orders, converted out of DynamoDB's typed 
 
 ## Quick start
 
-Prerequisites: Docker, `k3d`, `ollama`, `uv`, Python 3.12.
+Prerequisites: Docker (OrbStack here), `k3d`, `kubectl`, `helm`, `ollama`, `uv`, Python 3.12, and ~8 GB free for models and images.
+
+**[docs/RUNBOOK.md](docs/RUNBOOK.md) is the full version** — cold-start ordering, which stages look hung and are not, and per-lab verification. The short version:
 
 ```bash
-make model        # ollama pull qwen3:8b (~5GB) — one time
-make serve-model  # Ollama bound to 0.0.0.0 so the cluster can reach it
-make up           # cluster + gateway + build/import images + deploy
-make ui           # port-forward the chat UI, then open http://127.0.0.1:8000
+make up-all       # cluster, gVisor, sandbox control plane, Langfuse, Keycloak,
+                  # Gitea, images, agent, UI, broker, coding dispatcher.
+                  # 20-40 min cold. Order is load-bearing; see the comment block.
+
+make model                 # ollama pull qwen3:8b  (~5 GB)  -> alias local-smart
+ollama pull llama3.2:1b    #                       (~1.3 GB) -> alias local-fast
+make serve-model  # separate shell: Ollama bound to 0.0.0.0 so the cluster can reach it
+make ui           # separate shell: http://127.0.0.1:8000
 ```
 
-Lab 5 (sandboxed code execution) is a separate bring-up, because it installs a runtime into
-the k3d node and restarts it:
+Then the manual lab-3/lab-4 steps in the run-book, without which the agent has no tools.
+
+`make up` (cluster + images + deploy) is labs 0-1 only, and no longer produces a working chat on its own — the agent's ConfigMap points `MCP_SERVER_URLS` at the agentgateway that `up` does not install.
+
+**Do not run `make gvisor` or `make up-all` against a cluster you are using.** `gvisor` restarts the k3d agent node. On an already-running cluster prefer the sub-targets.
+
+Individual bring-ups, if you would rather go lab by lab:
 
 ```bash
-make sandbox          # gVisor + agent-sandbox control plane + images + broker + authz policy
+make sandbox          # lab 5: gVisor + agent-sandbox control plane + images + broker + authz policy
 make sandbox-forward  # in another shell: the port-forwards the verification targets need
 make sandbox-test     # then see modules/900-sandbox/README.md
-```
 
-Labs 6-7 (the coding agent) are another separate bring-up, because they install Gitea and a
-second sandbox pool:
-
-```bash
-make gitea            # Gitea + bot account + seed repo + label + webhook (prints logins)
+make gitea            # labs 6-7: Gitea + bot account + seed repo + label + webhook (prints logins)
 make coding           # sandbox template/pool, egress lock, images, dispatcher
 make gitea-ui         # in another shell: http://127.0.0.1:3001/
-
-# optional — run the real Claude Code CLI against a free hosted model:
-printf '%s' 'sk-or-v1-...' > .secrets/openrouter.key
-make model-key model-remote model-remote-test
-
 make coding-issue TITLE="Add a /health endpoint" BODY="Return {\"status\": \"ok\"}."
 ```
+
+Optional — run the real Claude Code CLI against a free hosted model:
+
+```bash
+printf '%s' 'sk-or-v1-...' > .secrets/openrouter.key   # gitignored
+make model-key
+kubectl apply -f platform/gateway/openrouter.yaml      # `make model-remote` is broken; see below
+make model-remote-test
+```
+
+> Known break: `make model-remote`'s first line is `kubectl rollout status -n model-access deploy/openrouter (direct TLS) --timeout=180s` — a leftover from removing the nginx TLS-origination sidecar. There is no such Deployment any more and the parenthetical is not valid shell. Apply the manifest directly until that line is deleted.
 
 See [modules/1000-coding-agent/README.md](modules/1000-coding-agent/README.md) for the four
 limits and where each one is enforced.
@@ -172,12 +191,15 @@ Diagrams: `make diagrams` (see [docs/architecture](docs/architecture/)).
 ## Design decisions
 
 - [ADR 0001 — k3s (via k3d), not kind](docs/adr/0001-k3s-not-kind.md) — kindnet silently ignores NetworkPolicy, which would make lab 5's airgap demo *look* like it works while enforcing nothing.
-- [ADR 0002 — Envoy AI Gateway extproc is not wired into the filter chain](docs/adr/0002-ai-gateway-extproc-not-wired.md) — the current lab-0 blocker, with the exact diagnostic.
+- [ADR 0002 — Envoy AI Gateway extproc is not wired into the filter chain](docs/adr/0002-ai-gateway-extproc-not-wired.md) — **resolved.** The lab-0 blocker, with the exact diagnostic, and the zero-byte `curl` that produced a confidently wrong conclusion.
 - [ADR 0003 — local model reasoning tokens](docs/adr/0003-reasoning-tokens.md) — qwen3 emits reasoning by default; this has real consequences for `max_tokens` and multi-turn.
+- [ADR 0004 — observability backend, and the gateway-span gap](docs/adr/0004-observability-backend-and-gateway-spans.md) — **superseded in part by 0008.** Kept for how it failed: a gap declared, theorised about, and measured against a backend that had been deleted.
 - [ADR 0005 — gVisor, not Kata + Firecracker](docs/adr/0005-gvisor-not-kata-firecracker.md) — the one substitution lab 5 forces, and exactly what it costs.
 - [ADR 0006 — install upstream agent-sandbox](docs/adr/0006-upstream-agent-sandbox-control-plane.md) — it runs unmodified on arm64/k3s. Includes a real hole found in the workshop's own air-gap NetworkPolicy.
 - [ADR 0007 — `max_tokens` is a per-tool property](docs/adr/0007-tool-call-token-budget.md) — adding a tool whose argument is a whole program is a change to the model config, and the failure is silent.
+- [ADR 0008 — Langfuse fits after all, at 1.6 GiB](docs/adr/0008-langfuse-fits-after-all.md) — a production sizing *recommendation* read as a requirement. The gap was a factor of eight.
 - [ADR 0009 — the coding agent is a swappable command](docs/adr/0009-coding-agent-is-a-swappable-command.md) — the AI gateway, not a sidecar proxy, is the Anthropic-compatibility layer; and the lab's four limits are properties of the boundary, not of which agent binary sits inside it.
+- [ADR 0010 — drop Traefik; the cleartext hop was a version gap](docs/adr/0010-no-traefik-and-the-backendtlspolicy-version-gap.md) — a resource that applies successfully and is then silently ignored is worse than one that fails.
 
 ## What this cannot do
 

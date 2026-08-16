@@ -10,8 +10,9 @@ export ORDERS_DB
 seed:            ## build data/orders.db from the workshop's 500-order dataset
 	python3 scripts/seed-orders.py
 
-model:           ## pull the local model
-	ollama pull $(MODEL_ID)
+model:           ## pull BOTH local models (local-smart + local-fast, ~6.5GB total)
+	ollama pull qwen3:8b
+	ollama pull llama3.2:1b
 
 venv:            ## create the agent virtualenv
 	cd $(AGENT) && uv venv --python 3.12 .venv && \
@@ -86,16 +87,36 @@ diagrams-lint:   ## structurizr model lint
 	  inspect -workspace workspace.dsl
 
 # --- one-command bring-up ------------------------------------------------------------
-IMAGES := customer-agent chat-ui
+IMAGES := customer-agent chat-ui mcp-server
 
-images:          ## build both app images and side-load them into k3d
+images:          ## build the three app images and side-load them into k3d
 	docker build -q -t customer-agent:local modules/200-agent/customer-agent
 	docker build -q -t chat-ui:local modules/300-ui/chat-ui
-	k3d image import customer-agent:local chat-ui:local -c agentic
+	docker build -q -t mcp-server:local modules/500-mcp/mcp-server
+	k3d image import customer-agent:local chat-ui:local mcp-server:local -c agentic
 
-deploy:          ## apply the app manifests
+# agentgateway install. CRDs FIRST — installing the control plane before its CRDs makes it
+# crashloop on `Unauthorized`, because its ClusterRole is generated against types that do not
+# exist yet. Also: do NOT name a Gateway `agentgateway` in this namespace; the chart owns a
+# Deployment by that name and the controller creates its data plane named after the Gateway,
+# so the collision is an immutable-selector error that retries forever behind a green
+# Programmed=True. Ours is `mcp-gateway`.
+agentgateway:    ## install agentgateway (CRDs then control plane) — lab 3
+	helm upgrade -i agentgateway-crds oci://ghcr.io/agentgateway/charts/agentgateway-crds \
+	  -n agentgateway-system --create-namespace
+	helm upgrade -i agentgateway oci://ghcr.io/agentgateway/charts/agentgateway \
+	  -n agentgateway-system
+	kubectl rollout status -n agentgateway-system deploy/agentgateway --timeout=300s
+
+deploy:          ## apply the app manifests (labs 1, 3, 4)
 	kubectl apply -f modules/200-agent/customer-agent/k8s.yaml
 	kubectl apply -f modules/300-ui/chat-ui/k8s.yaml
+	kubectl apply -f modules/500-mcp/mcp-server/k8s.yaml
+	kubectl rollout status deploy/mcp-server --timeout=180s
+	# Lab 4 authz. Applied here rather than in a separate target because without it the
+	# gateway is authn-only and every persona sees every tool — the lab-4 property is the
+	# DEFAULT state of this repo, not an optional extra.
+	kubectl apply -f modules/700-authz/policies/step3-differentiate.yaml
 	kubectl rollout status deploy/customer-agent --timeout=180s
 	kubectl rollout status deploy/chat-ui --timeout=180s
 
@@ -121,7 +142,7 @@ observability:   ## OTel collector + Langfuse (~1.6 GiB; see ADR 0008)
 #   - gitea before coding-deploy (the dispatcher needs the coding-agent-creds Secret)
 # On an ALREADY-RUNNING cluster prefer the sub-targets: `make gvisor` restarts a node and is
 # disruptive mid-session.
-up-all: cluster gvisor sandbox-platform observability identity gitea images deploy \
+up-all: cluster gvisor agentgateway sandbox-platform observability identity gitea images deploy \
         sandbox-images sandbox-deploy coding-images coding-platform coding-deploy
 	@echo ""
 	@echo "Cold start complete. Remaining manual steps:"
@@ -298,7 +319,6 @@ model-key:       ## load the OpenRouter key into the cluster (see scripts/set-mo
 	./scripts/model-key-gateway.sh
 
 model-remote:    ## add the OpenRouter backend + `remote-*` aliases to the gateway
-	kubectl rollout status -n model-access deploy/openrouter (direct TLS) --timeout=180s
 	kubectl apply -f platform/gateway/openrouter.yaml
 
 model-remote-test: ## one Anthropic-format call per remote alias, through the gateway
