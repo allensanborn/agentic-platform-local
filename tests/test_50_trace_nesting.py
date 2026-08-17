@@ -92,7 +92,15 @@ def _is_gateway(o):
 
 
 def _is_root(o):
-    return (o.get("name") or "").startswith("POST /chat")
+    """The agent's own server span for the turn.
+
+    Note the TRACE is named 'POST /chat' but the OBSERVATION is named 'chat' — Langfuse
+    remodels OTLP spans and the two names are not the same field. Matching the trace name
+    here finds nothing and the parentage test fails with 'no root span found' on a perfectly
+    healthy trace. Accept both spellings; FastAPI/OTel instrumentation has used each.
+    """
+    name = o.get("name") or ""
+    return name == "chat" or name.startswith("POST /chat")
 
 
 def test_the_trace_exists_at_all(observations):

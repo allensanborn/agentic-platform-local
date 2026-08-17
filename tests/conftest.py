@@ -169,6 +169,25 @@ def capacity_gate():
                     f"{p['metadata']['namespace']}/{p['metadata']['name']} CrashLoopBackOff"
                 )
 
+    # Node-level health is NOT sufficient. After a collapse the controllers come back
+    # Running (so the CrashLoopBackOff check above passes) while the Gateway is still
+    # Programmed=False, and every request through it fails with a connection error that
+    # looks like a broken agent. Observed with 32 controller restarts, both nodes Ready and
+    # CPU at 36%. Check the data plane is actually programmed.
+    try:
+        conds = json.loads(
+            kubectl("get", "gateway", "envoy-ai-gateway", "-o", "json", retries=2)
+        )["status"]["conditions"]
+        programmed = next((c for c in conds if c["type"] == "Programmed"), None)
+        if not programmed or programmed["status"] != "True":
+            problems.append(
+                "Gateway envoy-ai-gateway is not Programmed "
+                f"({programmed['status'] if programmed else 'condition absent'}) — the data "
+                "plane has no config, so every model call will fail"
+            )
+    except (RuntimeError, KeyError, TypeError) as e:
+        problems.append(f"could not read Gateway envoy-ai-gateway status: {e}")
+
     if problems:
         pytest.exit(
             "CAPACITY HOLD — the cluster is degraded, so this run would produce misleading "
