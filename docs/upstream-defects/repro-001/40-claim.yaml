@@ -1,0 +1,21 @@
+# Claiming a pod out of the warm pool is the event under test. This is the SandboxClaim the
+# workshop's broker (code-executor MCP, via the k8s-agent-sandbox Python SDK) creates on
+# every run_python call — written by hand here so the repro needs no broker, no model access,
+# and no MCP client.
+#
+# spec.warmPoolRef.name is the only required field in agent-sandbox v0.5.0's
+# SandboxClaim schema (verified with `kubectl explain sandboxclaim.spec`).
+#
+# lifecycle.shutdownPolicy: Retain keeps the bound pod around after the claim is deleted, so
+# a slow observer does not lose the evidence. Drop it if you want the stock delete-on-release
+# behaviour.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxClaim
+metadata:
+  name: repro-claim
+  namespace: repro-warmpool-label
+spec:
+  warmPoolRef:
+    name: repro-pool
+  lifecycle:
+    shutdownPolicy: Retain

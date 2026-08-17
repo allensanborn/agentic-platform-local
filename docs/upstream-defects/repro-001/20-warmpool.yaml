@@ -1,0 +1,12 @@
+# Two replicas, so that after one pod is claimed there is still a pooled pod beside it.
+# That side-by-side is the whole demonstration: same template, same namespace, one carries
+# agents.x-k8s.io/warm-pool-sandbox and one does not.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: repro-pool
+  namespace: repro-warmpool-label
+spec:
+  replicas: 2
+  sandboxTemplateRef:
+    name: repro-template

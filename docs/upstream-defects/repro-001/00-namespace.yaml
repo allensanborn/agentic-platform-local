@@ -1,0 +1,10 @@
+# Dedicated namespace so the reproducer never touches an existing agent-sandbox install's
+# objects. The metadata.name label is set explicitly: some clusters do not auto-add it, and
+# the NetworkPolicy below has no namespaceSelector, so this is belt-and-braces for anyone
+# extending the repro.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: repro-warmpool-label
+  labels:
+    kubernetes.io/metadata.name: repro-warmpool-label

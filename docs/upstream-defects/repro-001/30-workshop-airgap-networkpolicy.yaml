@@ -1,0 +1,23 @@
+# The workshop's supplemental air-gap policy, reproduced verbatim in selector shape.
+#
+# Upstream original:
+#   terraform/manifests/agentsandbox/sandbox-airgap-networkpolicy.yaml
+#   (name kata-fc-python-airgap, namespace agent-sandbox)
+#
+# Only the name and namespace differ here. The podSelector — matchExpressions on
+# agents.x-k8s.io/warm-pool-sandbox with operator: Exists — is exactly what the workshop
+# ships, and is the defect under test.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: repro-workshop-airgap
+  namespace: repro-warmpool-label
+spec:
+  podSelector:
+    matchExpressions:
+      - key: agents.x-k8s.io/warm-pool-sandbox
+        operator: Exists
+  policyTypes:
+    - Ingress
+    - Egress
+  egress: [] # air-gapped: no outbound anywhere
