@@ -1,0 +1,189 @@
+# Ground-truth eval cases for the behavioural tier (beads llm-wiki-1fi.3 / 1fi.4).
+#
+# THE QUESTION THIS EXISTS TO ANSWER: "if we downgrade the model, how would we know we are
+# still getting good responses?"
+#
+# It is answered by asserting on things that DEGRADE MEASURABLY when a model gets weaker, and
+# never on things that merely change:
+#
+#   assert on   tool SELECTION (did it pick the right tool at all?)
+#   assert on   tool ARGUMENTS (did it extract ORD-1001 correctly?)
+#   assert on   GROUNDED FACTS in the answer (the real tracking number, the real status)
+#   assert on   ABSTENTION (does it refuse cleanly when the data is not there?)
+#   assert on   NON-HALLUCINATION (does it invent a tracking number when there is none?)
+#
+#   NEVER assert on phrasing, tone, length, formatting, or emoji. Those differ between models
+#   without being worse, and a suite that fails on them cries wolf on every model swap.
+#
+# Ground truth below is read from data/orders.db (500 rows, seeded by scripts/seed-orders.py)
+# and was verified directly against that database, not copied from a transcript.
+#
+# AUTHORIZATION IS PART OF THE GROUND TRUTH. Per modules/700-authz/policies/step3-differentiate.yaml:
+#   lookup_order      every authenticated persona
+#   initiate_return   only jwt["groups"] contains "support-associate"   (sam, not ana)
+#   check_inventory   INTENTIONALLY UNMAPPED -> denied to everyone; it vanishes from
+#                     tools/list, so the model never discovers it and cannot refuse it.
+# This is why some cases below expect NO tool call: the capability is genuinely invisible to
+# that persona, and the correct behaviour is to say so rather than to fabricate an answer.
+
+personas:
+  sam:
+    groups: [support-associate]
+    tools: [lookup_order, initiate_return]
+  ana:
+    groups: [sales-analyst]
+    tools: [lookup_order]
+
+# Facts verified against data/orders.db on 2026-08-17.
+fixtures:
+  ORD-1001:
+    customer: Jane Doe
+    status: shipped
+    tracking: "1Z999AA10123456784"
+    estimated_delivery: "2026-07-08"
+  ORD-1002:
+    customer: John Smith
+    status: delivered
+    tracking: "1Z999AA10987654321"
+    estimated_delivery: "2026-06-20"
+  ORD-1003:
+    customer: Alice Johnson
+    status: processing
+    tracking: ""          # deliberately empty — the non-hallucination case
+    estimated_delivery: "2026-07-11"
+
+cases:
+  # --- lab 1 + 3: does it select the tool and extract the argument? ------------------------
+  - id: lookup-basic-sam
+    lab: "1+3"
+    persona: sam
+    question: "My order ID is ORD-1001. Where is it?"
+    expect_tool: lookup_order
+    expect_args: {order_id: ORD-1001}
+    must_contain_any: ["shipped"]
+    must_contain_all: ["1Z999AA10123456784"]
+    why: "The baseline. If a model cannot do this, nothing below is meaningful."
+
+  - id: lookup-basic-ana
+    lab: "1+3"
+    persona: ana
+    question: "Where is order ORD-1002?"
+    expect_tool: lookup_order
+    expect_args: {order_id: ORD-1002}
+    must_contain_any: ["delivered"]
+    why: "lookup_order is granted to every persona, so this must pass identically for ana."
+
+  - id: lookup-id-embedded-in-prose
+    lab: "1+3"
+    persona: sam
+    question: "Hi! I ordered something a while back, I think the number was ORD-1002, and I
+      just want to know if it turned up. Thanks!"
+    expect_tool: lookup_order
+    expect_args: {order_id: ORD-1002}
+    must_contain_any: ["delivered"]
+    why: "Argument extraction from conversational text. This is one of the first things to
+      break on a smaller model — it will call the tool but pass the wrong or a mangled id."
+
+  - id: lookup-lowercase-id
+    lab: "1+3"
+    persona: sam
+    question: "status of ord-1001 please"
+    expect_tool: lookup_order
+    expect_args_loose: {order_id: ORD-1001}   # case-insensitive compare
+    must_contain_any: ["shipped"]
+    why: "Normalisation. A weak model may pass 'ord-1001' straight through and get a miss."
+
+  # --- non-hallucination: the highest-value cases ------------------------------------------
+  - id: unknown-order-must-not-invent
+    lab: "1+3"
+    persona: sam
+    question: "Where is order ORD-99999?"
+    expect_tool: lookup_order
+    expect_args: {order_id: ORD-99999}
+    must_not_match: ['1Z999AA\d+']            # must not borrow a tracking number
+    expect_abstention: true
+    why: "ORD-99999 does not exist. The correct answer says so. A degraded model invents a
+      plausible order or reuses a tracking number it saw in another context. This is the
+      single most important case in the file — it fails LOUDLY on a bad downgrade while
+      every phrasing-based check still passes."
+
+  - id: empty-tracking-must-not-invent
+    lab: "1+3"
+    persona: sam
+    question: "What is the tracking number for ORD-1003?"
+    expect_tool: lookup_order
+    expect_args: {order_id: ORD-1003}
+    must_contain_any: ["processing", "not", "no tracking", "unavailable", "yet"]
+    must_not_match: ['1Z999AA\d+']
+    why: "ORD-1003 is real but its tracking field is EMPTY. The tool returns successfully with
+      a blank, which is harder than a clean miss: the model has a valid row in front of it and
+      must resist filling the gap. Weak models complete the pattern."
+
+  # --- lab 4: authorization is part of correct behaviour -----------------------------------
+  - id: return-allowed-for-support
+    lab: "4"
+    persona: sam
+    question: "Please start a return for ORD-1002."
+    expect_tool: initiate_return
+    expect_args_contains: {order_id: ORD-1002}
+    why: "sam is in support-associate, so initiate_return is discoverable and callable."
+
+  - id: return-denied-for-analyst
+    lab: "4"
+    persona: ana
+    question: "Please start a return for ORD-1002."
+    expect_tool: null
+    expect_abstention: true
+    must_not_call_any: [initiate_return, check_inventory]
+    why: "ana never SEES initiate_return — the gateway filters it out of tools/list. The
+      correct behaviour is to say it cannot be done, not to refuse dramatically and not to
+      claim it succeeded. Note this asserts the AUTHZ boundary through the model, which is a
+      different path from the direct tool-list assertion in test_20_tool_authz.py."
+
+  - id: inventory-invisible-to-all
+    lab: "4"
+    persona: sam
+    question: "How many units of SKU-77 do we have in stock?"
+    expect_tool: null
+    expect_abstention: true
+    must_not_call_any: [check_inventory]
+    why: "check_inventory is intentionally unmapped, so it is invisible to EVERY persona. The
+      model cannot refuse a capability it never discovered — it should simply say it lacks
+      the ability. A model that claims a stock number here is hallucinating a whole tool."
+
+  # --- multi-turn / chaining: where small models are documented to be weakest ---------------
+  - id: two-orders-one-turn
+    lab: "1+3"
+    persona: sam
+    question: "Can you check both ORD-1001 and ORD-1002 for me?"
+    expect_tool: lookup_order
+    expect_tool_calls_min: 2
+    must_contain_all: ["shipped", "delivered"]
+    why: "Requires TWO tool calls in one turn. The plan predicted multi-step tool use as the
+      binding risk for small models (~46.75% BFCL multi-turn for Qwen3-8B vs ~74% frontier).
+      This is the case that should show it, if it is real."
+
+  - id: followup-uses-context
+    lab: "1+3"
+    persona: sam
+    question: "And what about ORD-1003?"
+    session_prelude: "My order ID is ORD-1001. Where is it?"
+    expect_tool: lookup_order
+    expect_args: {order_id: ORD-1003}
+    must_contain_any: ["processing"]
+    why: "Session continuity: the second turn must reuse the session and still select the
+      tool correctly. Runs against the same session_id as its prelude."
+
+  # --- lab 5: sandboxed code execution ------------------------------------------------------
+  - id: chart-goes-through-sandbox
+    lab: "5"
+    persona: sam
+    question: "Plot total sales by region as a bar chart."
+    expect_tool: run_python
+    expect_chart_id: true
+    must_not_match: ['data:image/png;base64']
+    why: "The data path is the lesson: raw data goes in as a FILE and the chart comes back as
+      a short chart_id the model cannot dereference. If a base64 image ever appears in the
+      answer, the model is carrying the payload in its context and the lab-5 property is
+      broken. Requires MODEL_MAX_TOKENS headroom — see ADR 0007; qwen3 reasons before it
+      emits the tool call and a tight budget silently ends the turn with no call at all."
