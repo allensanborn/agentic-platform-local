@@ -43,6 +43,28 @@ command's empty output being read as a meaningful zero.
 TaskGroup, so an HTTP 401 arrives as `ExceptionGroup: unhandled errors in a TaskGroup (1
 sub-exception)` — `str()` of which contains no status code at all. Use `conftest.explain()`.
 
+## Where this runs unattended
+
+`make test` stays the human entry point. For the scheduled run, the decision and its reasoning
+are in [ADR 0013](../docs/adr/0013-where-the-tests-run.md): this suite cannot run on a hosted CI
+runner (no cluster, no gVisor, no models), so it runs **daily on this Mac** via a LaunchAgent,
+and a deliberately tiny hermetic slice — the two unit-test suites, YAML parse, `bash -n`, and a
+`--collect-only` of this suite — runs in GitHub Actions and covers **none of labs 0-7**.
+
+```bash
+scripts/run-tests-scheduled.sh                    # the unattended path, by hand
+scripts/install-scheduled-tests.sh                # install/refresh the LaunchAgent (opt-in)
+scripts/install-scheduled-tests.sh --uninstall
+cat  ~/Library/Logs/agentic-platform-tests/status   # PASS | FAIL | HOLD | SKIP
+less ~/Library/Logs/agentic-platform-tests/latest.log
+```
+
+The runner reports **HOLD** ("nothing was measured") separately from **FAIL**, and separately
+again from **SKIP** ("the cluster simply isn't up today"). It also performs the one repair this
+suite must never perform on itself: if the Gateway is not `Programmed` it restarts the gateway
+controllers *before* handing over, and says so in the log — a test that fixes what it measures
+has stopped measuring anything.
+
 ## If the whole run aborts with CAPACITY HOLD
 
 That is the pre-flight gate, not a product failure. The k3s API on this box can starve under

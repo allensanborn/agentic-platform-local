@@ -1,0 +1,107 @@
+# The hermetic slice, and ONLY the hermetic slice.
+#
+# Decision and reasoning: docs/adr/0013-where-the-tests-run.md.
+#
+# WHAT THIS DOES NOT COVER — read this before trusting a green tick. It does not test the
+# model gateway, the alias table, tool authorization, the sandbox air-gap, the coding
+# egress allowlist, or trace parentage. That is, none of labs 0-7. The suite that tests
+# those (tests/, 42 tests) needs a running k3d cluster, kube-router NetworkPolicy
+# enforcement, gVisor's runsc on the node, and Ollama with two models on the host. None of
+# that exists on a stock GitHub-hosted runner, and faking any of it would make the tests
+# assert nothing. That suite runs on the developer's Mac, on a schedule — see the ADR.
+#
+# Green here means "the Python still imports and the YAML still parses". Nothing more.
+name: hermetic checks (no cluster — see ADR 0013)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly, so the cloud half has a heartbeat even in a quiet week.
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hermetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: shell syntax (bash -n over scripts/)
+        run: |
+          set -euo pipefail
+          fail=0
+          for f in $(git ls-files '*.sh'); do
+            bash -n "$f" || { echo "::error file=$f::bash -n failed"; fail=1; }
+          done
+          exit $fail
+
+      - name: YAML parses (manifests are not validated against the API — no cluster)
+        run: |
+          set -euo pipefail
+          python -m pip install -q pyyaml
+          python - <<'PY'
+          import pathlib, sys, yaml
+          bad = []
+          roots = [pathlib.Path("platform"), pathlib.Path("modules"), pathlib.Path(".github")]
+          for root in roots:
+              if not root.exists():
+                  continue
+              for p in sorted(list(root.rglob("*.yaml")) + list(root.rglob("*.yml"))):
+                  try:
+                      list(yaml.safe_load_all(p.read_text()))
+                  except Exception as e:
+                      bad.append(f"{p}: {e}")
+          for b in bad:
+              print(f"::error::{b}")
+          print(f"parsed cleanly; {len(bad)} failures")
+          sys.exit(1 if bad else 0)
+          PY
+        env:
+          PYTHONWARNINGS: ignore
+
+      - name: broker unit tests (modules/900-sandbox/code-executor-mcp)
+        run: |
+          set -euo pipefail
+          cd modules/900-sandbox/code-executor-mcp
+          python -m pip install -q -r requirements.txt pytest
+          python -m pytest -q
+
+      - name: dispatcher unit tests (modules/1000-coding-agent/coding-agent-dispatcher)
+        run: |
+          set -euo pipefail
+          cd modules/1000-coding-agent/coding-agent-dispatcher
+          python -m pip install -q fastapi httpx pytest
+          python -m pytest -q
+
+      - name: infra suite imports and collects (does NOT run — needs a cluster)
+        run: |
+          set -euo pipefail
+          python -m pip install -q -r tests/requirements.txt
+          # --collect-only imports conftest.py and every test module, so a syntax error or
+          # a bad import in the suite is caught here. The capacity gate is a session
+          # fixture and does not execute during collection, so this needs no cluster.
+          cd tests && python -m pytest --collect-only -q
+
+      - name: coverage disclaimer
+        if: always()
+        run: |
+          {
+            echo "### What this run did NOT test"
+            echo ""
+            echo "No cluster was involved. The gateway, alias table, tool authorization,"
+            echo "sandbox air-gap, coding egress allowlist and trace parentage — labs 0-7 —"
+            echo "are covered only by \`tests/\` (42 tests), which runs on the developer's"
+            echo "Mac against the live k3d cluster."
+            echo ""
+            echo "See [ADR 0013](docs/adr/0013-where-the-tests-run.md)."
+          } >> "$GITHUB_STEP_SUMMARY"

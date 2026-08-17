@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent for the deterministic infra suite. See docs/adr/0013-where-the-tests-run.md.
+
+  Do NOT install this file directly from the repo. scripts/install-scheduled-tests.sh
+  substitutes __RUNNER__ / __LOGDIR__ / __PATH__ and copies the result plus the runner
+  into ~/Library/. That indirection is not tidiness: macOS TCC denies launchd-spawned
+  processes access to ~/Documents, so a plist pointing at the checkout dies with
+  "Operation not permitted" (exit 126) before writing a log line. The plist loads fine —
+  launchd is privileged; the bash it spawns is not.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.agentic-platform.tests</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__RUNNER__</string>
+  </array>
+
+  <!--
+    launchd hands a job almost no environment. kubectl, uv, docker and ollama all live in
+    Homebrew or ~/.local/bin, and the runner treats a missing tool as HOLD (which notifies)
+    precisely so a wrong PATH here cannot masquerade as an idle laptop.
+  -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+
+  <!--
+    Daily, once, at a fixed hour. Not hourly and never on push: the thing being scheduled
+    is the same burst load that collapses the k3s datastore (beads llm-wiki-661.23). If
+    daily runs start CAUSING holds, lower the frequency rather than loosening the gate.
+    If the Mac is asleep at this time, launchd runs the job once on next wake.
+  -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>20</integer>
+  </dict>
+
+  <!-- The runner writes its own timestamped log; these catch anything that dies before it. -->
+  <key>StandardOutPath</key>
+  <string>__LOGDIR__/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOGDIR__/launchd.err.log</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
