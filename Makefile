@@ -164,6 +164,15 @@ up-all: cluster gvisor agentgateway sandbox-platform observability identity gite
 	@echo "  make model-remote     # adds the remote-* aliases"
 	@echo "  make ui               # then open http://127.0.0.1:8000"
 
+test-venv:       ## create the test virtualenv
+	uv venv --python 3.12 tests/.venv && . tests/.venv/bin/activate && \
+	  uv pip install -q -r tests/requirements.txt
+
+test:            ## the deterministic infra suite (tier 1 of ADR 0012). Owns its port-forwards.
+	@# No dependency on `make forwards` — the suite starts and tears down its own tunnels.
+	@# Aborts with CAPACITY HOLD if the cluster is mid-collapse; see beads llm-wiki-661.23.
+	cd tests && . .venv/bin/activate && python -m pytest $(PYTEST_ARGS)
+
 up: cluster images deploy  ## labs 0-1 only. For everything, use `make up-all`
 	@echo ""
 	@echo "Ready. Start the model and open the UI:"

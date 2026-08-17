@@ -1,0 +1,3 @@
+pytest>=8,<9
+# Pinned to match the agent/broker images; the MCP streamable-HTTP client API moved in 2.x.
+mcp[cli]>=1.10,<2
