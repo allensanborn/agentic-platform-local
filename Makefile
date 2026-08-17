@@ -154,15 +154,32 @@ observability:   ## OTel collector + Langfuse (~1.6 GiB; see ADR 0008)
 #   - gitea before coding-deploy (the dispatcher needs the coding-agent-creds Secret)
 # On an ALREADY-RUNNING cluster prefer the sub-targets: `make gvisor` restarts a node and is
 # disruptive mid-session.
+#
+# DELIBERATELY EXCLUDED: modules 600/800 (A2A). `a2a` is not in the prerequisite list, and the
+# banner below says so out loud. The reason is capacity, not oversight — see beads
+# llm-wiki-661.23. This box's k3s datastore is kine-on-SQLite and it buckles when a CPU burst
+# lands on an already-busy API server; the collapse is self-amplifying (watches drop, every
+# controller re-LISTs, the datastore stays starved) and `up-all` is already the longest,
+# burstiest operation in the repo. A2A would bolt three more image builds, a `k3d image import`
+# of three more images, three more pods at 256m/512Mi requests, and three more `rollout status`
+# waits onto the tail of that burst. Modules 600/800 are also purely ADDITIVE: they install no
+# infrastructure and reuse the mcp-gateway, Keycloak and mcp-server that `up-all` already brings
+# up, so running them afterwards costs nothing and omitting them breaks nothing else. Deferring
+# them keeps the cold start survivable and lets the A2A labs come up on a settled cluster, which
+# is the condition they actually need.
 up-all: cluster gvisor agentgateway sandbox-platform observability identity gitea images deploy \
         sandbox-images sandbox-deploy coding-images coding-platform coding-deploy
 	@echo ""
-	@echo "Cold start complete. Remaining manual steps:"
+	@echo "Cold start complete. NOT included: modules 600/800 (A2A) — run \`make a2a\` once the"
+	@echo "cluster has settled. Deliberate; see the comment above this target and llm-wiki-661.23."
+	@echo ""
+	@echo "Remaining manual steps:"
 	@echo "  make model            # ollama pull qwen3:8b llama3.2:1b (~6.5GB, one time)"
 	@echo "  make serve-model      # Ollama bound to 0.0.0.0 so the cluster can reach it"
 	@echo "  make model-key        # only if using OpenRouter (see scripts/set-model-key.sh)"
 	@echo "  make model-remote     # adds the remote-* aliases"
 	@echo "  make ui               # then open http://127.0.0.1:8000"
+	@echo "  make a2a              # modules 600/800: the A2A multi-agent labs"
 
 test-venv:       ## create the test virtualenv
 	uv venv --python 3.12 tests/.venv && . tests/.venv/bin/activate && \
