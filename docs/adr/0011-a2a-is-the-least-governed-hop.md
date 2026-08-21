@@ -142,10 +142,67 @@ Predicting admission behaviour from a CRD's schema shape is not the same as runn
 schema with no preserve-unknown-fields implies silent pruning" is a sound general rule that a CEL
 rule on this particular CRD invalidates.
 
+## A third finding: the hop was destroying identity, and that was fixable
+
+*Added 2026-08-21, after modules 600/800 were deployed and exercised for the first time (beads
+`llm-wiki-661.20`).*
+
+Everything above was written from the CRD schema and from `make a2a-verify`, which passes. Once
+the labs actually ran, `make a2a-hops` failed for **both** personas, and the reason turned out to
+sit underneath this ADR's whole argument.
+
+agentgateway validates the bearer on the A2A route and then **strips `Authorization` before
+forwarding upstream**. That is correct default behaviour — a normal backend has no business
+receiving the client's credential. But the order-agent is not a normal backend: it is *itself an
+MCP client*, and it has to re-present the caller's persona on the second hop. With the header
+gone, `_incoming_bearer()` returned `None`, the MCP client connected tokenless, and mcp-gateway
+(`jwtAuthentication mode: Strict`) answered **401**. So for a while the honest description of the
+hop was worse than "least governed" — it was **identity-destroying**, which would have meant no
+downstream hop could authorize *either*.
+
+It is fixable, with `backend.auth.passthrough` on each A2A `AgentgatewayBackend`. The CRD says
+what it is for:
+
+> Reuses a client token already validated by another policy. Those policies may strip client
+> credentials; passthrough adds the original token back to the backend request. Without client
+> auth policies, this has no effect.
+
+Two ordering dependencies worth writing down: it is a **no-op until module 700's `mcp-authn`
+exists** (there is no validated token to reuse), and it lives on `spec.backend`, not
+`spec.traffic`.
+
+Measured after the fix — both personas now arrive with `token=yes`, and the tool list differs
+across *both* gateways:
+
+```
+[a2a-in] persona=sam/support-associate token=yes mcp_tools=['lookup_order', 'initiate_return']
+[a2a-in] persona=ana/sales-analyst     token=yes mcp_tools=['lookup_order']
+```
+
+Behaviourally: sam's return is processed; ana, who never discovers `initiate_return`, is told to
+contact support. `make a2a-verify` is unchanged, so no regression.
+
+**This sharpens the ADR rather than overturning it.** Passthrough restores **identity** across
+the A2A hop. It does not add **authorization** to it — `spec.backend` still has no `a2a` sub-key,
+so there is still no way to express "sam may ask the order agent but not the product agent." The
+precise finding is now: **A2A is authenticated and identity-preserving, and un-authorizable per
+method.** Note also that passthrough forwards the caller's token *verbatim*, which is exactly the
+pattern consequence 3 below flags as a production delta — it makes that gap concrete rather than
+hypothetical.
+
+The reason this was expensive is worth keeping too: the 401 arrived as
+`MCPClientInitializationError: unhandled errors in a TaskGroup (1 sub-exception)`, naming neither
+the token, the persona, nor the status code, and the `[a2a-in]` log line that would have shown
+`token=no` ran *after* the failing connect. Both are fixed — `_unwrap()` flattens the exception
+group, and the persona line now prints before connecting. **A test that only checks the edge
+missed all of this**: `make a2a-verify` asserts the A2A route's own authn and passed throughout,
+because a 200 there means "the request was admitted", not "the specialist did its job."
+
 ## Consequences
 
 - Modules 600 + 800 ship as the workshop designs them, with the honest label: **A2A is
-  authenticated, not authorized.**
+  authenticated, not authorized.** Identity now propagates (see the third finding above); it is
+  the per-method *authorization* that remains absent.
 - The demo does not pretend otherwise. `make a2a-verify` prints `sam` and `ana` both reaching
   both specialists and calls that a pass, and `make a2a-bypass` shows the Service answering with
   no token at all when the gateway is stepped around — a gate is only a gate if it is the only
