@@ -98,6 +98,26 @@ def _persona(token: str | None) -> str:
         return "undecodable"
 
 
+def _unwrap(exc: BaseException, depth: int = 0) -> str:
+    """Flatten an ExceptionGroup / __cause__ chain down to the exception that actually says why.
+
+    Strands' MCPClient runs its transport under anyio, so a plain HTTP 401 arrives wrapped as
+    `MCPClientInitializationError: ... unhandled errors in a TaskGroup (1 sub-exception)`. The
+    status code is two layers down, in `.exceptions[0]`. Same unwrapping the infra suite's
+    tests/conftest.py `explain()` does, for the same reason: the outer message is useless and
+    the inner one is the answer.
+    """
+    if depth > 5:
+        return f"{type(exc).__name__}: {exc}"
+    subs = getattr(exc, "exceptions", None)
+    if subs:
+        return " | ".join(_unwrap(s, depth + 1) for s in subs)
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None and type(cause) is not type(exc):
+        return f"{type(exc).__name__}: {exc} <- {_unwrap(cause, depth + 1)}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 class OrderAgentExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         query = context.get_user_input()
@@ -109,8 +129,26 @@ class OrderAgentExecutor(AgentExecutor):
         # the persona's `groups` claim (module 700).
         token = _incoming_bearer(context)
         headers = {"Authorization": f"Bearer {token}"} if token else None
+
+        # Log the persona BEFORE connecting, not only after. This line used to live under
+        # list_tools_sync(), so a failed MCP connect printed nothing at all and the only evidence
+        # left was `unhandled errors in a TaskGroup` — which names neither the persona, the
+        # token, nor the status code. That is what made beads llm-wiki-661.20 expensive to find.
+        # Printed here, `token=no` is visible the instant it happens.
+        print(
+            f"[a2a-in] persona={_persona(token)} token={'yes' if token else 'no'} "
+            f"mcp={mcp_server_url}",
+            flush=True,
+        )
+
         mcp_client = MCPClient(lambda: streamablehttp_client(mcp_server_url, headers=headers))
-        mcp_client.__enter__()
+        try:
+            mcp_client.__enter__()
+        except Exception as exc:  # noqa: BLE001 — the SUB-exception is the whole diagnosis
+            raise RuntimeError(
+                f"MCP connect to {mcp_server_url} failed "
+                f"(persona={_persona(token)} token={'yes' if token else 'no'}): {_unwrap(exc)}"
+            ) from exc
         try:
             tools = mcp_client.list_tools_sync()
             print(

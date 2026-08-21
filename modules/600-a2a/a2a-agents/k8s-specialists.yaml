@@ -137,6 +137,49 @@ spec:
     host: order-agent.default.svc.cluster.local
     port: 8081
 ---
+# THE HOP THAT MAKES THE CHAIN WORK. Without this the A2A labs are broken end to end, and the
+# failure is opaque — see beads llm-wiki-661.20.
+#
+# Lab 4's `mcp-authn` policy sets `traffic.jwtAuthentication` on the whole GATEWAY, so every
+# route through mcp-gateway is JWT-authenticated, these A2A routes included. What is not obvious
+# is that a client-auth policy CONSUMES the credential: agentgateway validates the bearer and
+# then STRIPS the `Authorization` header before forwarding upstream. That is correct default
+# behaviour for a normal backend — the backend should not receive the client's credential — but
+# the order-agent is not a normal backend. It is itself an MCP client, and it has to re-present
+# the caller's persona on the SECOND hop or every downstream authorization decision is made
+# about nobody. With the header gone, `_incoming_bearer()` returns None, the MCP client connects
+# tokenless, and mcp-gateway (jwtAuthentication mode: Strict) answers 401 — surfaced to the
+# caller as `unhandled errors in a TaskGroup`, which names neither the token nor the status.
+#
+# `backend.auth.passthrough` is the knob, and the CRD says exactly what it is for:
+#
+#   "Reuses a client token already validated by another policy. Those policies may strip client
+#    credentials; passthrough adds the original token back to the backend request. Without
+#    client auth policies, this has no effect."
+#
+# So the credential is re-attached AFTER validation, to this backend only, and only because a
+# policy validated it first. Note the ordering dependency: this is a no-op until module 700's
+# `mcp-authn` exists, and it is `spec.backend` (targets an AgentgatewayBackend), not
+# `spec.traffic` (targets a route or Gateway).
+#
+# Read the grain, because it is what ADR 0011 is about: this restores IDENTITY across the A2A
+# hop. It does not add AUTHORIZATION to it. `spec.backend` still has no `a2a` sub-key, so there
+# is still no way to say "sam may ask the order agent but not the product agent". The finding is
+# now precise: A2A is authenticated and identity-PRESERVING, and un-authorizable per method.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: order-agent-token-passthrough
+  namespace: default
+spec:
+  targetRefs:
+    - kind: AgentgatewayBackend
+      name: order-agent-backend
+      group: agentgateway.dev
+  backend:
+    auth:
+      passthrough: {}
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -171,6 +214,24 @@ spec:
   a2a:
     host: product-agent.default.svc.cluster.local
     port: 8082
+---
+# Same passthrough as the order-agent's, and applied for consistency rather than necessity: the
+# product-agent's only tool is the in-process `search_products`, so it makes no MCP call and has
+# no downstream hop to authenticate to. Left off, the two specialists would receive different
+# request shapes for no reason a reader could infer. See the long comment above.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: product-agent-token-passthrough
+  namespace: default
+spec:
+  targetRefs:
+    - kind: AgentgatewayBackend
+      name: product-agent-backend
+      group: agentgateway.dev
+  backend:
+    auth:
+      passthrough: {}
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
