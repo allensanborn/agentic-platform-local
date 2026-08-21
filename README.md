@@ -6,22 +6,30 @@ The workshop's thesis is that every capability arrives as **a control point in i
 
 Full feasibility evaluation, including the AWS-coupling analysis and what each lab costs to reproduce, lives in the companion wiki at `wiki/homelab-agentic-platform-plan.md`.
 
+## Walk the workshop
+
+**Every lab has a guide.** They are written for someone *doing* the lab: what control point it installs, why it exists, what to run, what to look at, and what should surprise you. Read them in order and this repo is a course rather than a pile of manifests.
+
+| Lab | Guide | The control point it adds | Status |
+|---|---|---|---|
+| 0 | **[Model gateway](modules/100-gateway/README.md)** | the gateway owns which model answers | ✅ **working** |
+| 1 | **[The agent](modules/200-agent/README.md)** · **[the chat UI](modules/300-ui/README.md)** | *none — this is the baseline the rest is built around* | ✅ **working** |
+| 2 | **[Observability](modules/400-observability/README.md)** | the collector; no workload holds a tracing credential | ✅ **working** — one `/chat` turn is a single 26-observation trace spanning agent *and* gateway |
+| 3 | **[Tools behind a gateway](modules/500-mcp/README.md)** | the agent gateway owns which tools exist | ✅ **working**, ⚠️ **not automated** — see below |
+| 4 | **[Authorization](modules/700-authz/README.md)** | the gateway decides which tools a persona may even *see* | ✅ **working**, ⚠️ **not automated** — see below |
+| 5 | **[Sandboxed code execution](modules/900-sandbox/README.md)** | the broker; raw rows never enter the model's context | ✅ **working** (gVisor not Firecracker — [ADR 0005](docs/adr/0005-gvisor-not-kata-firecracker.md)) |
+| 6-7 | **[Autonomous coding agent](modules/1000-coding-agent/README.md)** | the dispatcher holds the push credential, so the model never does | ✅ **working** ([ADR 0009](docs/adr/0009-coding-agent-is-a-swappable-command.md)) |
+
+Two further modules port the workshop's multi-agent labs, which the seven above do not cover: **[A2A — the third hop](modules/600-a2a/README.md)** and **[authn at the A2A hop](modules/800-a2a-authz/README.md)**.
+
 **Two documents carry the rest of this repo:**
 
 - **[docs/RUNBOOK.md](docs/RUNBOOK.md)** — clone to working demo. Prerequisites, the cold-start order and why it is not cosmetic, the manual steps `up-all` deliberately leaves out, how to verify each lab, where a step is slow rather than hung, and teardown.
 - **[docs/TALK.md](docs/TALK.md)** — the substitution table as an argument. Lab by lab, what each substitution preserves and what it costs, including the parts that failed: the fail-open air-gap policy in the workshop's own design, what gVisor gives up against Firecracker, and a sizing claim that was retracted after being measured.
 
-## Status
+The three answer different questions, and it is worth knowing which one you want: the **lab guides** are *what am I learning*, the **run-book** is *how do I get it running*, the **talk** is *why is it shaped this way*.
 
-| Lab | Component | Status |
-|---|---|---|
-| 0 | Model gateway (Envoy AI Gateway → Ollama), alias table | ✅ **working** |
-| 1 | Strands agent + `lookup_order` tool + SSE + Chainlit UI, all in-cluster | ✅ **working** |
-| 2 | Observability: OTel + collector → **Langfuse** | ✅ **working** — one `/chat` turn is a single 26-observation trace spanning agent *and* gateway |
-| 3 | MCP tool serving via agentgateway + least privilege | ✅ **working**, ⚠️ **not automated** — see below |
-| 4 | Authorization: Keycloak + deny-by-default per-tool policy | ✅ **working**, ⚠️ **not automated** — see below |
-| 5 | Sandboxed code execution | ✅ **working** (gVisor not Firecracker — [ADR 0005](docs/adr/0005-gvisor-not-kata-firecracker.md)) |
-| 6-7 | Autonomous coding agent: Gitea issue → sandbox → PR | ✅ **working** ([ADR 0009](docs/adr/0009-coding-agent-is-a-swappable-command.md)) |
+## Status
 
 ⚠️ **Labs 3 and 4 have complete manifests and no Makefile target.** `make images` does not build `mcp-server:local`, `make deploy` applies neither `modules/500-mcp/mcp-server/k8s.yaml` nor `modules/700-authz/policies/step3-differentiate.yaml`, and nothing in this repo installs the agentgateway control plane — those steps were run by hand and never scripted. Since lab 3 the agent discovers its tools over MCP instead of importing them, so a cluster built from `make up-all` alone gives you an agent with **zero tools**. [docs/RUNBOOK.md](docs/RUNBOOK.md#labs-3-and-4--the-manual-part) has the manual sequence.
 
