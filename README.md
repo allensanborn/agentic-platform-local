@@ -4,6 +4,8 @@ Rebuilding AWS's **Secure AI Agents on Amazon EKS** workshop from open-source pa
 
 The workshop's thesis is that every capability arrives as **a control point in infrastructure, not a smarter or more-trusted agent** — the agent's code barely changes lab to lab; what changes is what surrounds it. That thesis is portable. This repo tests how much of it survives on one laptop.
 
+**Upstream:** [Secure AI Agents on Amazon EKS](https://catalog.workshops.aws/ai-agents-on-eks) — an AWS Level-300 workshop by Ashok Srirama and Carlos Santana, with Sai Charan Teja Gopaluni and Sai Kumar Samala. All agent code, lab structure and scenario (AnyCompany Shop, its personas and tool matrix) trace back to it, and the defect reports in [docs/upstream-defects/](docs/upstream-defects/) are addressed to it. Its presenters compress the whole design into one line this repo's docs borrow: *the controls go around the agent, not inside it.*
+
 Full feasibility evaluation, including the AWS-coupling analysis and what each lab costs to reproduce, lives in the companion wiki at `wiki/homelab-agentic-platform-plan.md`.
 
 ## Walk the workshop

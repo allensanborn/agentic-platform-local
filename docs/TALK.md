@@ -16,6 +16,8 @@ The honest answer, up front: the AWS coupling was shallow and easy. The expensiv
 
 AWS's workshop builds one customer-service agent across seven labs. Each lab adds exactly one production concern: model access, then tracing, then tool serving, then authorization, then code-execution sandboxing, then an autonomous coding agent. The agent's own code barely moves. What moves is what surrounds it.
 
+The workshop's own opening argument for why any of this is necessary survives the port untouched, so it is worth stating before the substitutions. An agent is a program you can't fully predict, for three stacked reasons. **The model chooses the actions** — you ship a reasoning loop, not a call graph, and which tool runs next is decided at runtime, by a model, from the user's words. **The code is untrusted** — ask for a chart and the model writes Python; that is model output, not reviewed source, and something has to run it. **The blast radius is your cluster** — an agent pod holding the app's credentials with open egress is the whole problem in one line. So the controls go around the agent, not inside it. The workshop's presenters name five (credentials, AI gateway, MCP gateway, sandbox, egress); this rebuild counts six because the coding agent's dispatcher earns its own hexagon.
+
 That structure is the interesting claim, and it is not obviously AWS-specific. This project tested it by removing AWS entirely and rebuilding on a single 24 GB Apple Silicon laptop. No EKS, no Bedrock, no Cognito, no DynamoDB, no cloud model required.
 
 All seven labs run.
@@ -380,6 +382,8 @@ This is a local-model constraint, not a workshop one, and it is precisely why th
 ---
 
 ## Part 6 — Labs 6-7: the coding agent, and the thesis stated as an experiment
+
+The workshop frames labs 5 and 6-7 as **the two postures an agent can take toward a sandbox**, and the pairing is worth a beat before the mechanics. In lab 5 the agent stays *outside*: an ordinary pod that reasons and calls tools, reaching the sandbox as a tool — `run_python` through the MCP gateway — while the untrusted code goes in alone, air-gapped, credential-free, destroyed after one run. Here the posture inverts and **the agent is the payload**: Claude Code itself runs inside the sandbox, holding no human credential, with egress to exactly two services, and its model-written changes never touch the node. Same sandbox control point, pointed in the opposite direction.
 
 **The control point: the dispatcher.** It mints a per-run git token and revokes it in a `finally`. It claims a sandbox. And it holds the push credential, so the model never does.
 

@@ -77,7 +77,14 @@ Plus the issuer URL and the JWKS host and path. That is the complete coupling to
 
 The second one is the interesting one. The agent never discovers the capability, so the model does not *refuse* — it genuinely cannot see the thing. **There is no capability to be talked into using**, which is a strictly stronger property than a refusal the model has been trained to produce. Prompt injection has nothing to work with.
 
-Note also the deliberate asymmetry: support-associate has `initiate_return`, sales-analyst has `run_python` (added in lab 5), and **neither persona is a superset of the other**. That prevents "admin vs user" from being the only mental model you leave with.
+Note also the deliberate asymmetry: support-associate has `initiate_return`, sales-analyst has `run_python` (added in lab 5), and **neither persona is a superset of the other**. That prevents "admin vs user" from being the only mental model you leave with. The workshop presents the full matrix as one table, worth reproducing because every cell is a decision:
+
+| Tool | What it does | Support Associate | Sales Analyst |
+|---|---|---|---|
+| `lookup_order` | order status, tracking, delivery | ✓ | ✓ |
+| `initiate_return` | process a return (mutates an order) | ✓ | ✕ |
+| `run_python` | analysis and charts in a sandbox (lab 5) | ✕ | ✓ |
+| `check_inventory` | stock check — deliberately unmapped | ✕ | ✕ |
 
 ## What should surprise you
 
