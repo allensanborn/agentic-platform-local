@@ -24,6 +24,10 @@ Full feasibility evaluation, including the AWS-coupling analysis and what each l
 
 Two further modules port the workshop's multi-agent labs, which the seven above do not cover: **[A2A — the third hop](modules/600-a2a/README.md)** and **[authn at the A2A hop](modules/800-a2a-authz/README.md)**.
 
+## Beyond the workshop — extensions
+
+The labs above are frozen; where this repo goes next is **[extensions/](extensions/README.md)** — compositions that each swap exactly one seam the base already proved was swappable, so nothing is ever redone. Seven are specced: token exchange (RFC 8693), the Floci un-substitution (the workshop's verbatim AWS code against locally emulated AWS), typed intent (RFC 9396), SPIFFE/SPIRE workload identity, Pomerium as an alternate MCP gateway, an OpenBao secrets plane, and — the compounding one — the coding agent re-driven by Dapr Workflow + Dapr Agents with durable grants and ephemeral tokens.
+
 **Two documents carry the rest of this repo:**
 
 - **[docs/RUNBOOK.md](docs/RUNBOOK.md)** — clone to working demo. Prerequisites, the cold-start order and why it is not cosmetic, the manual steps `up-all` deliberately leaves out, how to verify each lab, where a step is slow rather than hung, and teardown.
