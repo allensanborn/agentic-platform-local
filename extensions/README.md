@@ -17,6 +17,7 @@ The base workshop demonstrated each of these is swappable without touching the a
 | `secrets` | raw K8s Secrets (`coding-agent-creds`, Langfuse) | dispatcher already mints/revokes per-run — dynamic secrets by hand |
 | `orchestration` | none — the dispatcher is an ad-hoc control loop | module 1000 isolates it: webhook → dispatcher → sandbox → PR |
 | `grant-shape` | coarse persona claims (`groups`) mapped to tool allowlists | lab 4's deny-by-default policy structure |
+| `observability` | Langfuse behind the OTel collector | lab 2's design: workloads speak OTLP to the collector and hold no backend credential (and the port already swapped Jaeger out once) |
 
 ## Composition rules
 
@@ -36,6 +37,7 @@ The base workshop demonstrated each of these is swappable without touching the a
 | 050 | [Pomerium as MCP gateway](050-pomerium-mcp-gateway/README.md) | `tool-gateway` | proposed | a second per-tool authz architecture (two-token OAuth 2.1) on the same tools |
 | 060 | [OpenBao secrets plane](060-openbao-secrets/README.md) | `secrets` | proposed | the dispatcher's hand-rolled mint/revoke becomes dynamic secrets under one mount |
 | 070 | [Dapr Workflow + Dapr Agents](070-dapr-durable-agents/README.md) | `orchestration` | proposed | the coding agent's control loop becomes durable activities, with grants (never tokens) as the durable artifact |
+| 080 | [Arize Phoenix trace backend](080-phoenix-observability/README.md) | `observability` | proposed | swap Langfuse for Phoenix behind the same collector, then turn traces into an eval harness (datasets + experiments) |
 
 **The compounding demo** is 010 → 030 → 070: token exchange gives you narrow per-hop credentials, RAR gives you typed per-transaction grants, and Dapr makes the grant durable while tokens stay ephemeral at the activity boundary. Each step reuses everything before it. 020 is the same compounding run on the other leg — it composes with 010/030/070 because Floci's Cognito and STS sit at the same seam Keycloak does.
 

@@ -26,7 +26,7 @@ Two further modules port the workshop's multi-agent labs, which the seven above 
 
 ## Beyond the workshop — extensions
 
-The labs above are frozen; where this repo goes next is **[extensions/](extensions/README.md)** — compositions that each swap exactly one seam the base already proved was swappable, so nothing is ever redone. Seven are specced: token exchange (RFC 8693), the Floci un-substitution (the workshop's verbatim AWS code against locally emulated AWS), typed intent (RFC 9396), SPIFFE/SPIRE workload identity, Pomerium as an alternate MCP gateway, an OpenBao secrets plane, and — the compounding one — the coding agent re-driven by Dapr Workflow + Dapr Agents with durable grants and ephemeral tokens.
+The labs above are frozen; where this repo goes next is **[extensions/](extensions/README.md)** — compositions that each swap exactly one seam the base already proved was swappable, so nothing is ever redone. Eight are specced: token exchange (RFC 8693), the Floci un-substitution (the workshop's verbatim AWS code against locally emulated AWS), typed intent (RFC 9396), SPIFFE/SPIRE workload identity, Pomerium as an alternate MCP gateway, an OpenBao secrets plane, Arize Phoenix as an alternate trace backend with a real eval harness, and — the compounding one — the coding agent re-driven by Dapr Workflow + Dapr Agents with durable grants and ephemeral tokens.
 
 **Two documents carry the rest of this repo:**
 
