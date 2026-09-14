@@ -3,7 +3,7 @@
 **Seam:** `observability` · **Status:** proposed
 **Base required:** labs 0-2 (`make observability`; the collector is the control point)
 **Requires extensions:** none
-**Alternative to:** Langfuse (same seam — pick one per cluster, or run both briefly for the comparison shot)
+**Alternative to:** Langfuse (same seam) — but this is the one seam where *both* is the end state: the collector dual-writes, because the two backends' OSS eval halves are complementary (see plan step 4)
 
 ## What this demonstrates
 
@@ -24,7 +24,7 @@ Preserved: the collector, every workload's OTLP config, the no-tracing-credentia
 1. Base up through lab 2; capture the 26-observation trace as the before.
 2. Phoenix on the cluster; point a *second* collector exporter at it (dual-write) — zero risk to the base while comparing.
 3. Compare the same `/chat` turn in both UIs: span nesting, gateway-under-agent join, token/cost attribution. Record deltas.
-4. Flip: remove the Langfuse exporter, Phoenix becomes the backend; base verify still green.
+4. Flip: remove the Langfuse exporter, Phoenix becomes the backend; base verify still green. **Then flip back to dual-write — that is the end state, not a migration step.** The eval strengths are complementary and the OSS/commercial boundaries oppose each other: Phoenix OSS owns the offline half (client-side `phoenix.evals`, pre-built benchmarked evaluators, datasets → experiments, session/trajectory evals) while its continuous production evals are commercial (Arize AX); Langfuse's server-side managed LLM-as-judge over live traces *is* open source. Dual-write keeps both OSS halves: Langfuse watches production turns online, Phoenix runs the offline experiment loop. (Wiki: `agentic-observability-layer` § "The backend slot has a rival".)
 5. The payoff step: build a dataset from captured traces, run one experiment (e.g. `local-fast` vs `local-smart` on the order-question set) — the lab-0 alias flip, now *measured* instead of demonstrated.
 
 ## Verify
