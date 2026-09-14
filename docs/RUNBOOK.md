@@ -6,7 +6,7 @@ Read [TALK.md](TALK.md) for *why* any of this is shaped the way it is. This file
 
 Two warnings before anything else, because both cost real time here:
 
-1. **`make up-all` does not bring up labs 3 and 4.** The MCP server, the agentgateway control plane, and the authorization policies have no Makefile target at all. They were installed by hand and never scripted. [Labs 3 and 4 — the manual part](#labs-3-and-4--the-manual-part) is the gap and what to do about it. Without it the agent has no tools, because since lab 3 it discovers them over MCP instead of importing them.
+1. **`make up-all` does not bring up modules 600/800 (A2A).** Every other lab comes up, labs 3 and 4 included. A2A is excluded on purpose, for capacity reasons rather than oversight — see the comment above the `up-all` target. Run `make a2a` once the cluster has settled. Nothing else depends on it.
 2. **Verify that a diagnostic produced output before believing what it appears to say.** This repo's ADRs contain three separate wrong conclusions drawn from commands that emitted zero bytes ([ADR 0002](adr/0002-ai-gateway-extproc-not-wired.md), [ADR 0004](adr/0004-observability-backend-and-gateway-spans.md)). `out=$(cmd 2>&1); echo "${#out}"` before you reason about the content.
 
 ---
@@ -96,44 +96,40 @@ make ui              # port-forward svc/chat-ui 8000 -> http://127.0.0.1:8000
 
 ---
 
-## Labs 3 and 4 — the manual part
+## Labs 3 and 4 — how they come up, and the two traps in the ordering
 
-`modules/500-mcp/` (lab 3) and `modules/700-authz/` (lab 4) ship complete, commented manifests and **no automation whatsoever**:
+`make up-all` brings both up. This section exists because the *order* is load-bearing in two places and neither failure is legible from the error message.
 
-- `make images` builds `customer-agent:local` and `chat-ui:local` only. `mcp-server:local` is never built, and `modules/500-mcp/mcp-server/k8s.yaml` sets `imagePullPolicy: Never`, so the Deployment will sit in `ErrImageNeverPull`.
-- `make deploy` applies the agent and the UI only. Neither `modules/500-mcp/mcp-server/k8s.yaml` nor `modules/700-authz/policies/step3-differentiate.yaml` is applied by any target.
-- Nothing anywhere in the repo or its git history installs the **agentgateway control plane**. The `agentgateway` GatewayClass and the `mcp-gateway` Gateway are declared in `modules/500-mcp/mcp-server/k8s.yaml`, but the controller that reconciles them has to come from its Helm charts, and those commands were never captured.
+What runs, and where:
 
-This matters more than a missing convenience target, because the agent's ConfigMap points `MCP_SERVER_URLS` at `mcp-gateway.agentgateway-system.svc.cluster.local`. A cluster built from `up-all` alone gives you an agent that starts, connects to nothing, and discovers zero tools.
+| Step | Target | What it does |
+|---|---|---|
+| control plane | `make agentgateway` | `agentgateway-crds` chart, **then** `agentgateway`, both into `agentgateway-system` |
+| image | `make images` | builds `mcp-server:local` and side-loads it into k3d |
+| lab 3 | `make deploy` | `modules/500-mcp/mcp-server/k8s.yaml` — Deployment, Service, GatewayClass, `mcp-gateway` Gateway, AgentgatewayBackend, HTTPRoute |
+| lab 4 | `make deploy` | `modules/700-authz/policies/step3-differentiate.yaml` — the Keycloak JWKS backend, `mcp-authn`, `mcp-tool-authz` |
 
-Until the targets exist, the sequence is:
+Lab 4 is applied by `deploy` rather than by its own target deliberately. Without it the gateway is authn-only and every persona sees every tool, so per-tool authorization is the default state here, not an add-on you can forget.
+
+**Trap 1 — the CRD chart must come first.** Installing the `agentgateway` control plane before `agentgateway-crds` crashloops it on `Unauthorized`, because its ClusterRole is generated against types that do not exist yet. The error names authorization and the cause is missing CRDs.
+
+**Trap 2 — do not name that Gateway `agentgateway`.** The Helm chart owns a Deployment of that name in the same namespace, and the Gateway controller creates its data plane named after the Gateway. The collision is an immutable-selector error that retries forever *behind a green* `Programmed=True`. The manifest already names it `mcp-gateway` and says so in a comment.
+
+One dependency worth knowing about, because it crosses labs: lab 5's `run_python` policy reads the JWT that lab 4's gateway-wide `mcp-authn` policy validates. `make sandbox-deploy` applies the lab-5 policy, but it is inert if lab 4 has not been applied. `up-all` orders them correctly.
+
+If you want to run the two labs by hand against an already-running cluster:
 
 ```bash
-# 1. the agentgateway control plane — CRD chart FIRST, then the controller.
-#    Installing them in the other order crashloops the controller on Unauthorized.
-#    (Chart coordinates and version are not recorded in this repo; take them from
-#    agentgateway's own install docs, into namespace agentgateway-system.)
-
-# 2. the MCP server image, which `make images` does not build
+make agentgateway
 docker build -q -t mcp-server:local modules/500-mcp/mcp-server
 k3d image import mcp-server:local -c agentic
-
-# 3. lab 3 — the MCP server, the Gateway, the AgentgatewayBackend, the HTTPRoute
 kubectl apply -f modules/500-mcp/mcp-server/k8s.yaml
 kubectl rollout status deploy/mcp-server --timeout=180s
-
-# 4. lab 4 — JWT authentication on the Gateway + per-tool authorization.
-#    `make identity` (Keycloak + the anycompany realm) must already have run;
-#    up-all includes it.
 kubectl apply -f modules/700-authz/policies/step3-differentiate.yaml
-
-# 5. lab 5's run_python policy depends on lab 4's gateway-wide mcp-authn policy
-#    for the JWT it reads. `make sandbox-deploy` applies it, but it is inert
-#    without step 4.
 kubectl rollout restart deploy/customer-agent
 ```
 
-Do **not** name that Gateway `agentgateway`. The Helm chart owns a Deployment of that name in the same namespace, the Gateway controller creates a data-plane Deployment named after the Gateway, and the collision is an immutable-selector error that retries forever while the Gateway still reports `Programmed=True`. The manifest already names it `mcp-gateway` and says so in a comment.
+Then start a **new** chat session and watch the agent log for `Discovered N MCP tools`. `make test` asserts the resulting property directly: anonymous MCP is 401, and `sam` and `ana` get different tool lists (`tests/test_20_tool_authz.py`).
 
 ---
 
@@ -339,4 +335,4 @@ Verified by running:
 
 Taken from the repo's own recorded output rather than re-run: every `kubectl`-dependent command, all seven labs' expected output, and the timings for the cold start. Those transcripts are in `README.md`, the module READMEs, and the ADRs, and they were produced against this cluster.
 
-Not verified at all, because it is not written down anywhere: the agentgateway Helm chart name and version in [Labs 3 and 4](#labs-3-and-4--the-manual-part).
+*Updated 2026-09-14:* this section previously closed by noting that the agentgateway Helm chart coordinates were "not written down anywhere." They are, in the `agentgateway` Makefile target (`oci://ghcr.io/agentgateway/charts/agentgateway-crds` then `oci://ghcr.io/agentgateway/charts/agentgateway`), and have been since commit `8770c8e`. The claim was stale, not the charts.

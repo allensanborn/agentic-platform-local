@@ -18,12 +18,16 @@ no token                 ->  HTTP 401 at the gateway
 
 ## What you run
 
-Like lab 3, this has **no Makefile target**. `make identity` (Keycloak plus the `anycompany` realm) must already have run; `up-all` includes it.
+`make deploy` applies this lab, and `up-all` runs it. That is deliberate rather than a missing target: without this policy the gateway is authn-only and every persona sees every tool, so per-tool authorization is the **default** state of this repo. `make identity` (Keycloak plus the `anycompany` realm) must already have run; `up-all` includes it.
+
+By hand, against a running cluster:
 
 ```bash
 kubectl apply -f modules/700-authz/policies/step3-differentiate.yaml
 kubectl rollout restart deploy/customer-agent
 ```
+
+`make test` asserts the property this lab installs: anonymous MCP is 401, and `sam` and `ana` get different tool lists (`tests/test_20_tool_authz.py`).
 
 Verify with the probe, in a **new session** each time:
 

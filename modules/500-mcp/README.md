@@ -12,27 +12,21 @@ This lab moves the tools to an MCP server behind a gateway, and the agent discov
 
 ## What you run
 
-This lab has **no Makefile target.** It was installed by hand and never scripted, which is a known gap — see [RUNBOOK.md, "Labs 3 and 4 — the manual part"](../../docs/RUNBOOK.md#labs-3-and-4--the-manual-part) for the authoritative sequence and the reasons.
+`make up-all` covers this lab. On an already-running cluster, the three pieces are:
 
 ```bash
-# 1. the agentgateway control plane — CRD chart FIRST, then the controller.
-#    (Chart coordinates are not recorded in this repo; take them from
-#    agentgateway's install docs, into namespace agentgateway-system.)
-
-# 2. the MCP server image, which `make images` does not build
-docker build -q -t mcp-server:local modules/500-mcp/mcp-server
-k3d image import mcp-server:local -c agentic
-
-# 3. the MCP server, the Gateway, the AgentgatewayBackend, the HTTPRoute
-kubectl apply -f modules/500-mcp/mcp-server/k8s.yaml
-kubectl rollout status deploy/mcp-server --timeout=180s
-
+make agentgateway    # CRD chart FIRST, then the controller — see the trap below
+make images          # builds and side-loads mcp-server:local
+make deploy          # the MCP server, the Gateway, the AgentgatewayBackend, the HTTPRoute
+                     # (and lab 4's authz, which deploy applies on purpose)
 kubectl rollout restart deploy/customer-agent
 ```
 
 Then start a **new** chat session and watch the agent log for `Discovered N MCP tools`.
 
-> **This is not optional plumbing.** The agent's ConfigMap points `MCP_SERVER_URLS` at `mcp-gateway.agentgateway-system.svc.cluster.local`. A cluster built from `make up-all` alone gives you an agent that starts cleanly, connects to nothing, and discovers **zero tools**.
+> **This is not optional plumbing.** The agent's ConfigMap points `MCP_SERVER_URLS` at `mcp-gateway.agentgateway-system.svc.cluster.local`, so an agent without this lab starts cleanly, connects to nothing, and discovers **zero tools**. That is why `make up` (labs 0-1) no longer produces a working chat on its own: it does not install agentgateway. Use `make up-all`.
+
+> **The trap:** install `agentgateway-crds` before `agentgateway`. The other order crashloops the controller on `Unauthorized`, because its ClusterRole is generated against types that do not exist yet. [RUNBOOK.md](../../docs/RUNBOOK.md#labs-3-and-4--how-they-come-up-and-the-two-traps-in-the-ordering) has the second trap (the Gateway naming collision) and the cross-lab dependency on lab 5.
 
 ## What to look at
 

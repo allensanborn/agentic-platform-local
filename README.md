@@ -37,7 +37,11 @@ The three answer different questions, and it is worth knowing which one you want
 
 ## Status
 
-⚠️ **Labs 3 and 4 have complete manifests and no Makefile target.** `make images` does not build `mcp-server:local`, `make deploy` applies neither `modules/500-mcp/mcp-server/k8s.yaml` nor `modules/700-authz/policies/step3-differentiate.yaml`, and nothing in this repo installs the agentgateway control plane — those steps were run by hand and never scripted. Since lab 3 the agent discovers its tools over MCP instead of importing them, so a cluster built from `make up-all` alone gives you an agent with **zero tools**. [docs/RUNBOOK.md](docs/RUNBOOK.md#labs-3-and-4--the-manual-part) has the manual sequence.
+✅ **`make up-all` brings up labs 0-7, including 3 and 4.** `make images` builds `mcp-server:local`, `make agentgateway` installs the control plane (CRD chart first — the order is load-bearing), and `make deploy` applies both `modules/500-mcp/mcp-server/k8s.yaml` and `modules/700-authz/policies/step3-differentiate.yaml`. Lab 4's authorization is applied by `deploy` rather than by a separate target on purpose: without it the gateway is authn-only and every persona sees every tool, so per-tool authz is the **default** state of this repo, not an optional extra. `make test` asserts it (`test_20_tool_authz.py`).
+
+The one thing `up-all` still leaves out is **modules 600/800 (A2A)**, deliberately and for capacity reasons — run `make a2a` once the cluster has settled. The banner `up-all` prints says so.
+
+*Corrected 2026-09-14. A previous revision of this section claimed labs 3 and 4 had no automation. That was written as the problem statement in the same commit that fixed it (`8770c8e`) and was never updated. It was wrong from the moment it was published; the manifests have been wired since.*
 
 **What actually runs today:** a Strands agent answering order questions against a local SQLite database, reaching its model *through the gateway by alias*, streaming SSE with the workshop's exact wire contract.
 
@@ -157,8 +161,9 @@ Prerequisites: Docker (OrbStack here), `k3d`, `kubectl`, `helm`, `ollama`, `uv`,
 **[docs/RUNBOOK.md](docs/RUNBOOK.md) is the full version** — cold-start ordering, which stages look hung and are not, and per-lab verification. The short version:
 
 ```bash
-make up-all       # cluster, gVisor, sandbox control plane, Langfuse, Keycloak,
-                  # Gitea, images, agent, UI, broker, coding dispatcher.
+make up-all       # cluster, gVisor, agentgateway, sandbox control plane, Langfuse,
+                  # Keycloak, Gitea, images, agent, UI, MCP server + per-tool authz,
+                  # broker, coding dispatcher.
                   # 20-40 min cold. Order is load-bearing; see the comment block.
 
 make model                 # ollama pull qwen3:8b  (~5 GB)  -> alias local-smart
@@ -167,9 +172,9 @@ make serve-model  # separate shell: Ollama bound to 0.0.0.0 so the cluster can r
 make ui           # separate shell: http://127.0.0.1:8000
 ```
 
-Then the manual lab-3/lab-4 steps in the run-book, without which the agent has no tools.
+That covers labs 0-7. `make a2a` adds modules 600/800 afterwards, once the cluster has settled.
 
-`make up` (cluster + images + deploy) is labs 0-1 only, and no longer produces a working chat on its own — the agent's ConfigMap points `MCP_SERVER_URLS` at the agentgateway that `up` does not install.
+`make up` (cluster + images + deploy) does **not** install agentgateway, so it no longer produces a working chat on its own — the agent's ConfigMap points `MCP_SERVER_URLS` at a gateway that is not there. Use `make up-all`, or add `make agentgateway` yourself.
 
 **Do not run `make gvisor` or `make up-all` against a cluster you are using.** `gvisor` restarts the k3d agent node. On an already-running cluster prefer the sub-targets.
 
