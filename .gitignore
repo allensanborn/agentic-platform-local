@@ -8,3 +8,9 @@ data/orders.db
 # Local model-provider credentials. NEVER commit these.
 .secrets/
 *.key
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
