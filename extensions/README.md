@@ -38,8 +38,9 @@ The base workshop demonstrated each of these is swappable without touching the a
 | 060 | [OpenBao secrets plane](060-openbao-secrets/README.md) | `secrets` | proposed | the dispatcher's hand-rolled mint/revoke becomes dynamic secrets under one mount |
 | 070 | [Dapr Workflow + Dapr Agents](070-dapr-durable-agents/README.md) | `orchestration` | proposed | the coding agent's control loop becomes durable activities, with grants (never tokens) as the durable artifact |
 | 080 | [Arize Phoenix trace backend](080-phoenix-observability/README.md) | `observability` | proposed | swap Langfuse for Phoenix behind the same collector, then turn traces into an eval harness (datasets + experiments) |
+| 090 | [Attested actor tokens](090-attested-actor-token/README.md) | `identity` (the join of its halves) | proposed | the 8693 exchange's actor leg authenticated by attested workload identity (040's SVID or 070's Sentry JWT) instead of a client secret — the `act` claim stops being assertable |
 
-**The compounding demo** is 010 → 030 → 070: token exchange gives you narrow per-hop credentials, RAR gives you typed per-transaction grants, and Dapr makes the grant durable while tokens stay ephemeral at the activity boundary. Each step reuses everything before it. 020 is the same compounding run on the other leg — it composes with 010/030/070 because Floci's Cognito and STS sit at the same seam Keycloak does.
+**The compounding demo** is 010 → 030 → 070: token exchange gives you narrow per-hop credentials, RAR gives you typed per-transaction grants, and Dapr makes the grant durable while tokens stay ephemeral at the activity boundary. Each step reuses everything before it. 090 slots into that chain rather than extending it: with 040 or 070 present, the exchange's actor leg becomes attested, so the chain's `act` claims are cryptographically bound to workloads end to end. 020 is the same compounding run on the other leg — it composes with 010/030/070 because Floci's Cognito and STS sit at the same seam Keycloak does.
 
 ## Writing one
 
