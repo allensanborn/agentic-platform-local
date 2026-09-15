@@ -75,3 +75,7 @@ _Add a brief overview of your project architecture_
 ## Conventions & Patterns
 
 _Add your project-specific conventions here_
+
+## What belongs in git under `.beads/`
+
+`metadata.json` is deliberately **not** tracked — it mixes machine-local fields (`dolt_mode`, `dolt_database` naming) with nothing a clone needs beyond `sync.remote`, which already lives in the tracked `config.yaml`. Same reasoning as the sibling `llm-wiki` repo's CLAUDE.md § "What belongs in git under `.beads/`" — decided by the clean-clone test, not by citing bd's (self-contradictory) docs.
