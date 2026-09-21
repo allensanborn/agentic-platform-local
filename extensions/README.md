@@ -30,7 +30,7 @@ The base workshop demonstrated each of these is swappable without touching the a
 
 | # | Extension | Seam | Status | One line |
 |---|---|---|---|---|
-| 010 | [Token exchange (RFC 8693)](010-token-exchange/README.md) | `identity` | proposed | the gateway trades the user's token for a narrower per-tool token; the delegation chain shows up in the trace |
+| 010 | [Token exchange (RFC 8693)](010-token-exchange/README.md) | `identity` | **blocked (upstream)** | Keycloak-side exchange verified; agentgateway v1.5.0's CRD wiring fails opaquely — see the extension's "Where this stands" |
 | 020 | [Floci: the un-substitution](020-floci-cloud/README.md) | `identity`+`datastore`+`model` | proposed | restore the workshop's verbatim AWS code paths against locally emulated AWS |
 | 030 | [Typed intent (RFC 9396 RAR)](030-typed-intent-rar/README.md) | `grant-shape` | proposed | bind a grant to one typed transaction; show where that model ends and containment begins |
 | 040 | [SPIFFE/SPIRE workload identity](040-spiffe-workload-identity/README.md) | `identity` (workload half) | proposed | attested, rotating SVIDs and mTLS replace every mounted credential |

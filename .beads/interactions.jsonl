@@ -1,0 +1,2 @@
+{"id":"int-f395f235094eb4d8f7cfbdc0cfd90baa","kind":"field_change","created_at":"2026-09-17T23:40:09.545653Z","actor":"Allen Sanborn","issue_id":"apl-66e","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Repo flipped to public (confirmed via gh repo view 2026-09-17) — collaborator invites no longer needed"}}
+{"id":"int-51f763a5d7c0b632a7e07c5287677775","kind":"field_change","created_at":"2026-09-21T14:17:09.075695Z","actor":"Allen Sanborn","issue_id":"apl-4g9.1","extra":{"field":"status","new_value":"blocked","old_value":"open"}}

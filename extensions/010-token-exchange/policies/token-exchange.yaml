@@ -1,0 +1,73 @@
+# Extension 010 — RFC 8693 token exchange at the MCP backend.
+#
+# The base forwards the caller's own bearer token straight to the MCP server (lab 4's
+# jwtAuthentication policy validates it at the gateway, but the token that reaches the tool
+# is the same one the user's session holds for its full 900s lifetime). This exchanges it at
+# the backend hop for a narrower, gateway-minted token before the mcp-server ever sees it.
+#
+# Reuses the base's keycloak-jwks AgentgatewayBackend (modules/700-authz/policies/
+# step3-differentiate.yaml) as the token endpoint's backendRef — same host, this extension
+# only adds a path.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: agentgateway-exchange-client
+  namespace: default
+type: Opaque
+stringData:
+  clientSecret: agentgateway-dev-secret
+---
+# The oauthTokenExchange backendRef below points from this policy's namespace (default)
+# into agentgateway-system (where keycloak-jwks lives, reused from lab 4). Cross-namespace
+# refs need the TARGET namespace's consent — same pattern as
+# platform/observability/gateway-trace-refgrant.yaml.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-token-exchange-backend
+  namespace: agentgateway-system
+spec:
+  from:
+    - group: agentgateway.dev
+      kind: AgentgatewayPolicy
+      namespace: default
+  to:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: keycloak-jwks
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-token-exchange
+  namespace: default
+spec:
+  targetRefs:
+    - kind: AgentgatewayBackend
+      name: mcp-backend
+      group: agentgateway.dev
+  backend:
+    auth:
+      oauthTokenExchange:
+        url: http://keycloak.identity.svc.cluster.local:8080/realms/anycompany/protocol/openid-connect/token
+        clientAuth:
+          clientId: anycompany-agentgateway
+          method: ClientSecretBasic
+          secretRef:
+            name: agentgateway-exchange-client
+            key: clientSecret
+        grantType: TokenExchange
+        # requestedTokenType deliberately omitted: Keycloak (like several RFC 8693
+        # authorization servers) rejects an explicit requested_token_type it doesn't
+        # recognize the shape of, and agentgateway v1.5.0 surfaces that rejection as an
+        # opaque "invalid request" rather than passing the server's error body through.
+        # Omitting it lets the exchange fall back to the RFC 8693 default behavior.
+        subjectToken:
+          source:
+            header:
+              name: Authorization
+              prefix: "Bearer "
+        location:
+          header:
+            name: Authorization
+            prefix: "Bearer "

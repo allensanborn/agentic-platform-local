@@ -7,6 +7,12 @@
 # Dev mode (start-dev) on purpose: no TLS, in-memory H2, realm imported at boot. This is an
 # identity provider for a demo, not a production deployment, and pretending otherwise would
 # add ceremony without adding a lesson.
+#
+# Pinned to 26.2, not 26.0: standard token exchange (RFC 8693) stopped being a preview
+# feature in 26.2 (no --features flag, no fine-grained-admin permission dance) — see
+# extensions/010-token-exchange. 26.0 would still work for labs 0-4 on their own; this bump
+# exists for the extension, landed here because the base shouldn't run an unnecessarily
+# old identity provider once a newer default-stable release exists.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,7 +28,7 @@ spec:
     spec:
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.0
+          image: quay.io/keycloak/keycloak:26.2
           args: ["start-dev", "--import-realm", "--http-enabled=true"]
           env:
             - {name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin}
