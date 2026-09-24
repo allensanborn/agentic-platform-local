@@ -71,8 +71,10 @@ header explaining the divergence from upstream:
 
 ## Reporting status
 
-**Updated 2026-09-24 after a version sweep.** Both reports are drafted in [`reports/`](reports/);
-neither has been sent.
+**Updated 2026-09-24 after a version sweep.** Both reports are drafted in [`reports/`](reports/).
+**Neither will be sent for now** — 001 is being carried as a defect local to *this* repo pending
+further validation against a fixed controller release. The drafts are kept because the analysis in
+them is the record of what was measured, not because a report is queued.
 
 | Report | Target | State |
 |---|---|---|
