@@ -182,4 +182,11 @@ Two things in v0.5.0 are worth an upstream issue in their own right, independent
 - We did not reproduce this on **EKS with the AWS VPC CNI**. Our measurements are on k3s with Flannel + the kube-router network-policy controller. The failure is in *label selection*, which is CNI-independent, and the workshop's own manifest header states the VPC CNI's eBPF enforcement does reach kata microVMs — but we have not run the claimed-pod egress test on the workshop's actual stack.
 - We ran `runsc` (gVisor), not `kata-fc` (Firecracker); see `docs/adr/0005-gvisor-not-kata-firecracker.md`. Nothing in this defect depends on the runtime class.
 - We have not read agent-sandbox controller source to confirm *why* the label is dropped; "dropping the label is how the pod leaves the pool" is our inference from the observed behaviour, not a quote from upstream code.
-- We have not confirmed whether agent-sandbox versions after v0.5.0 change either label's lifecycle.
+- ~~We have not confirmed whether agent-sandbox versions after v0.5.0 change either label's
+  lifecycle.~~ **Resolved 2026-09-24 by a version sweep** (`repro-001/evidence/transcripts/`).
+  The generated-policy bug is **fixed in v0.5.2**: on v0.5.0 and v0.5.1 a claimed pod reached
+  `1.1.1.1:443`; from v0.5.2 through v1.0.2 it is blocked. The `warm-pool-sandbox` label is
+  still removed at claim time on v1.0.2, so the selector guidance in this report stands, but
+  the controller-side issue below is **no longer a defect on current releases** — it is a
+  documentation gap, rewritten as [`reports/001a`](reports/001a-agent-sandbox-docs-issue.md).
+  The workshop-side defect is unaffected, because the workshop pins v0.5.0.

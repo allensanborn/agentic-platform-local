@@ -15,7 +15,13 @@ in `kubectl` output.
 | [001](001-airgap-networkpolicy-claimed-sandbox.md) | Air-gap NetworkPolicy stops selecting the sandbox at claim time | AWS workshop (module 900/1000 platform Terraform) + `kubernetes-sigs/agent-sandbox` v0.5.0 | **High** | **fails open** |
 | [002](002-a2a-authn-wrong-crd-path.md) | `a2a-authn.yaml` targets `spec.authorization`, which does not exist | AWS workshop (module 800) | Medium | fails closed |
 
-`repro-001/` holds a minimal, dependency-free reproducer for defect 001.
+`repro-001/` holds a minimal, dependency-free reproducer for defect 001, plus transcripts of it
+run against every agent-sandbox release from v0.5.0 to v1.0.2.
+
+> **Scope note (2026-09-24).** Defect 001 has two halves. The `kubernetes-sigs/agent-sandbox`
+> half was **fixed upstream in v0.5.2** and is no longer a bug; what remains there is a
+> documentation gap. The AWS workshop half is **still live**, because the workshop pins
+> v0.5.0. See [Reporting status](#reporting-status).
 
 ## The two are not the same kind of problem
 
@@ -65,8 +71,33 @@ header explaining the divergence from upstream:
 
 ## Reporting status
 
-Neither defect has been reported upstream yet. Defect 001 warrants two separate reports —
-one to the AWS workshop, and one to `kubernetes-sigs/agent-sandbox` for the controller-side
-issues described in that report's final section.
+**Updated 2026-09-24 after a version sweep.** Both reports are drafted in [`reports/`](reports/);
+neither has been sent.
+
+| Report | Target | State |
+|---|---|---|
+| [`001a`](reports/001a-agent-sandbox-docs-issue.md) | `kubernetes-sigs/agent-sandbox` | **Re-scoped — no longer a bug report.** Draft, not filed. |
+| [`001b`](reports/001b-aws-workshop-report.md) | AWS workshop (Workshop Studio) | **Still a live security defect.** Draft, not sent. |
+| 002 | AWS workshop (module 800) | Not yet drafted. |
+
+### What the version sweep changed
+
+`repro-001/run-repro.sh` was run against every agent-sandbox release from v0.5.0 to v1.0.2;
+the transcripts are in [`repro-001/evidence/transcripts/`](repro-001/evidence/transcripts/).
+
+| Controller version | `spec.networkPolicy` enforced on a warm-pool pod? | Claimed pod reaches the internet? |
+|---|---|---|
+| v0.5.0, v0.5.1 | no | **yes — reached `1.1.1.1:443`** |
+| v0.5.2 – v0.5.6, v1.0.0 – v1.0.2 | yes | no — blocked |
+
+So **the controller-side half of defect 001 was fixed upstream in v0.5.2.** The report to
+`kubernetes-sigs/agent-sandbox` is therefore *not* a bug report. What survives there is a
+documentation gap: `agents.x-k8s.io/warm-pool-sandbox` is still removed at claim time
+(confirmed current on v1.0.2), and nothing in the API or docs warns that this makes it unsafe
+as a `NetworkPolicy` `podSelector`. Filed as `kind/documentation`, plus a question about
+whether the v0.5.2 fix was flagged as security-relevant for anyone still pinned below it.
+
+**The AWS workshop half is not fixed, precisely because the workshop pins v0.5.0** — the
+upstream fix never reaches it. That report stands as written.
 
 Tracked as beads `llm-wiki-661.13` (001) and `llm-wiki-661.18` (002).

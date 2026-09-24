@@ -1,0 +1,14 @@
+# Companion to 50-openegress-template.yaml. Apply this only once that namespace's warm pool
+# has two Ready pods, so the claim ADOPTS a pooled pod rather than cold-starting its own.
+# (A cold-started sandbox never carried agents.x-k8s.io/warm-pool-sandbox in the first place,
+# so it is not the object the control is about.)
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxClaim
+metadata:
+  name: repro-claim-open
+  namespace: repro-openegress
+spec:
+  warmPoolRef:
+    name: repro-pool-open
+  lifecycle:
+    shutdownPolicy: Retain

@@ -1,0 +1,94 @@
+################ RUN: v0.5.6 ################
+core: <scratch>/as/v0.5.6/sandbox.yaml
+ext:  <scratch>/as/v0.5.6/extensions.yaml
+run started 2026-09-14T22:09:42Z
+
+===== STEP 0: CNI pre-check =====
+control (unselected, must REACH): 1.1.1.1 (1.1.1.1:443) open
+  exit=0
+selected (deny-all, must BLOCK): command terminated with exit code 1
+  exit=1
+
+===== install control plane =====
+deployment.apps/agent-sandbox-controller condition met
+controller image: registry.k8s.io/agent-sandbox/agent-sandbox-controller:v0.5.6
+
+===== STEP 1: apply platform objects =====
+namespace/repro-warmpool-label created
+sandboxtemplate.extensions.agents.x-k8s.io/repro-template created
+sandboxwarmpool.extensions.agents.x-k8s.io/repro-pool created
+networkpolicy.networking.k8s.io/repro-workshop-airgap created
+pod/repro-pool-ffg5l condition met
+pod/repro-pool-jz8nd condition met
+
+===== STEP 2: pooled state =====
+NAME               READY   STATUS    RESTARTS   AGE   LABELS
+repro-pool-ffg5l   1/1     Running   0          2s    agents.x-k8s.io/created-by=controller,agents.x-k8s.io/sandbox-name-hash=bd11bd61,agents.x-k8s.io/sandbox-template-ref-hash=0d20a304,agents.x-k8s.io/warm-pool-sandbox=a2106d30,repro-kind=sandbox
+repro-pool-jz8nd   1/1     Running   0          2s    agents.x-k8s.io/created-by=controller,agents.x-k8s.io/sandbox-name-hash=f74de797,agents.x-k8s.io/sandbox-template-ref-hash=0d20a304,agents.x-k8s.io/warm-pool-sandbox=a2106d30,repro-kind=sandbox
+-- pods selected by the workshop policy (warm-pool-sandbox):
+pod/repro-pool-ffg5l
+pod/repro-pool-jz8nd
+-- networkpolicies:
+NAME                            SELECTOR
+repro-template-network-policy   map[matchLabels:map[agents.x-k8s.io/sandbox-template-ref-hash:0d20a304]]
+repro-workshop-airgap           map[matchExpressions:[map[key:agents.x-k8s.io/warm-pool-sandbox operator:Exists]]]
+-- PODS carrying sandbox-template-ref-hash:
+pod/repro-pool-ffg5l
+pod/repro-pool-jz8nd
+-- SANDBOX CRs carrying sandbox-template-ref-hash:
+sandbox.agents.x-k8s.io/repro-pool-ffg5l
+sandbox.agents.x-k8s.io/repro-pool-jz8nd
+-- sandbox CR labels:
+NAME               READY   REASON              AGE   LABELS
+repro-pool-ffg5l   True    DependenciesReady   2s    agents.x-k8s.io/created-by=controller,agents.x-k8s.io/launch-type=warm,agents.x-k8s.io/sandbox-pod-template-hash=5cbedcf0,agents.x-k8s.io/sandbox-template-hash=ccbe61e3,agents.x-k8s.io/sandbox-template-ref-hash=0d20a304,agents.x-k8s.io/warm-pool-sandbox=a2106d30
+repro-pool-jz8nd   True    DependenciesReady   2s    agents.x-k8s.io/created-by=controller,agents.x-k8s.io/launch-type=warm,agents.x-k8s.io/sandbox-pod-template-hash=5cbedcf0,agents.x-k8s.io/sandbox-template-hash=ccbe61e3,agents.x-k8s.io/sandbox-template-ref-hash=0d20a304,agents.x-k8s.io/warm-pool-sandbox=a2106d30
+
+===== STEP 3: claim =====
+sandboxclaim.extensions.agents.x-k8s.io/repro-claim created
+NAME          READY   SANDBOX            REASON              AGE
+repro-claim   True    repro-pool-ffg5l   DependenciesReady   0s
+BOUND=repro-pool-ffg5l
+
+===== STEP 4: claimed state =====
+NAME               READY   STATUS    RESTARTS   AGE   LABELS
+repro-pool-ffg5l   1/1     Running   0          10s   agents.x-k8s.io/sandbox-name-hash=bd11bd61,agents.x-k8s.io/sandbox-template-ref-hash=0d20a304,repro-kind=sandbox
+repro-pool-jz8nd   1/1     Running   0          10s   agents.x-k8s.io/created-by=controller,agents.x-k8s.io/sandbox-name-hash=f74de797,agents.x-k8s.io/sandbox-template-ref-hash=0d20a304,agents.x-k8s.io/warm-pool-sandbox=a2106d30,repro-kind=sandbox
+repro-pool-qgkbb   1/1     Running   0          8s    agents.x-k8s.io/created-by=controller,agents.x-k8s.io/sandbox-name-hash=737b7de8,agents.x-k8s.io/sandbox-template-ref-hash=0d20a304,agents.x-k8s.io/warm-pool-sandbox=a2106d30,repro-kind=sandbox
+-- bound pod labels:
+{"agents.x-k8s.io/sandbox-name-hash":"bd11bd61","agents.x-k8s.io/sandbox-template-ref-hash":"0d20a304","repro-kind":"sandbox"}
+-- bound SANDBOX CR labels:
+{"agents.x-k8s.io/claim-uid":"27e3f24c-ad5d-4554-bd81-54a2c430cb16","agents.x-k8s.io/launch-type":"warm","agents.x-k8s.io/sandbox-template-ref-hash":"0d20a304"}
+-- workshop selector (warm-pool-sandbox) -> is BOUND in this list?
+pod/repro-pool-jz8nd
+pod/repro-pool-qgkbb
+-- template-supplied selector (repro-kind=sandbox):
+pod/repro-pool-ffg5l
+pod/repro-pool-jz8nd
+pod/repro-pool-qgkbb
+-- generated-policy selector (sandbox-template-ref-hash) on PODS:
+pod/repro-pool-ffg5l
+pod/repro-pool-jz8nd
+pod/repro-pool-qgkbb
+-- networkpolicies now:
+NAME                            SELECTOR
+repro-template-network-policy   map[matchLabels:map[agents.x-k8s.io/sandbox-template-ref-hash:0d20a304]]
+repro-workshop-airgap           map[matchExpressions:[map[key:agents.x-k8s.io/warm-pool-sandbox operator:Exists]]]
+
+===== STEP 5: egress =====
+-- CLAIMED pod (repro-pool-ffg5l):
+  nc exit=1
+-- CONTROL, still-POOLED pod (repro-pool-jz8nd):
+  nc exit=1
+-- CONTROL, pod in a namespace with no sandbox policy (repro-cni-precheck/control):
+1.1.1.1 (1.1.1.1:443) open
+  nc exit=0
+
+===== STEP 5b: attribution — delete the workshop policy, re-probe the claimed pod =====
+  nc exit=1
+
+===== STEP 5c: attribution — also delete the GENERATED policy, re-probe =====
+NAME                            POD-SELECTOR                                         AGE
+repro-template-network-policy   agents.x-k8s.io/sandbox-template-ref-hash=0d20a304   5s
+  nc exit=1
+run finished 2026-09-14T22:10:51Z
+################ END: v0.5.6 ################
